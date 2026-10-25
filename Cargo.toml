@@ -1,0 +1,31 @@
+[package]
+name = "mujo"
+version = "0.1.0"
+edition = "2021"
+description = "A terminal UI for pass and GPG"
+license = "MIT"
+repository = "https://github.com/AnyookDev/mujo"
+
+[[bin]]
+name = "mujo"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+crossterm = "0.27"
+ratatui = "0.24"
+sha1 = "0.10"
+hmac = "0.12"
+base32 = "0.4"
+walkdir = "2.4"
+dirs = "5.0"
+rand = "0.8"
+toml = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+qrcode = { version = "0.14", default-features = false }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+strip = true
