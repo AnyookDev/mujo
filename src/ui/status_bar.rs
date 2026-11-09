@@ -290,6 +290,7 @@ pub(crate) fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
             AppMode::Git if !matches!(app.git_pane, GitPaneState::Ready) => {
                 Some("Setup".to_string())
             }
+            AppMode::Normal if !app.jump_buf.is_empty() => Some(format!("jump: {}", app.jump_buf)),
             AppMode::Normal if preview_active => Some("Preview".to_string()),
             AppMode::ContextMenu => Some("Context menu".to_string()),
             // The Confirm modes carry no context sub-pill: their sentence

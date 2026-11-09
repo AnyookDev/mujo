@@ -1,4 +1,4 @@
-use crate::app::App;
+use crate::app::{App, JUMP_TIMEOUT};
 use crate::keys::{accepts, Action};
 use crate::models::AppMode;
 use anyhow::Result;
@@ -45,6 +45,14 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
             _ => return Ok(()),
         }
     }
+    // Clear the jump buffer on any key that isn't a Shift+alpha jump.
+    let is_jump_key = key.modifiers.contains(KeyModifiers::SHIFT)
+        && matches!(key.code, KeyCode::Char(c) if c.is_alphabetic());
+    if !is_jump_key {
+        app.jump_buf.clear();
+        app.jump_at = None;
+    }
+
     match key.code {
         // Ctrl-modified Char arms must precede every plain Char arm:
         // crossterm reports Ctrl+letter as Char(letter) with CONTROL, and
@@ -259,13 +267,28 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
         KeyCode::Char('g') => {
             app.open_git_pane();
         }
-        // Shift+Letter: jump to the first sibling entry starting with that
-        // letter (case-insensitive). Every uppercase letter reaches this
-        // arm now that git push, config reload and quit have moved to
-        // Ctrl+P / Ctrl+R / Ctrl+Q and the unadvertised Shift+C generate
-        // binding is gone.
+        // Shift+Letter: type-ahead prefix jump. Accumulates characters into
+        // jump_buf; resets the buffer when JUMP_TIMEOUT has elapsed since the
+        // last keypress. Tries the full prefix, then falls back to the last
+        // character alone when the prefix matched nothing and is multi-char.
         KeyCode::Char(c) if key.modifiers.contains(KeyModifiers::SHIFT) && c.is_alphabetic() => {
-            app.jump_to_letter(c);
+            let now = Instant::now();
+            let timed_out = app
+                .jump_at
+                .map(|t| now.duration_since(t) >= JUMP_TIMEOUT)
+                .unwrap_or(true);
+            if timed_out {
+                app.jump_buf.clear();
+            }
+            app.jump_buf.push(c.to_lowercase().next().unwrap_or(c));
+            app.jump_at = Some(now);
+
+            if !app.jump_to_prefix(&app.jump_buf.clone()) && app.jump_buf.len() > 1 {
+                // Full prefix matched nothing; retry with just the last char.
+                let last = app.jump_buf.chars().next_back().unwrap().to_string();
+                app.jump_buf = last.clone();
+                app.jump_to_prefix(&last);
+            }
         }
         KeyCode::Char('/') => {
             app.mode = AppMode::Search;
@@ -324,4 +347,235 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
         _ => {}
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::{App, JUMP_TIMEOUT};
+    use crate::config::Config;
+    use crate::models::{AppMode, GitPaneState, NewStoreStage, PassEntry};
+    use crossterm::event::{KeyEvent, KeyEventKind, KeyModifiers};
+    use std::path::PathBuf;
+    use std::time::{Duration, Instant};
+
+    fn fake_key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers,
+            kind: KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        }
+    }
+
+    fn shift(c: char) -> KeyEvent {
+        fake_key(KeyCode::Char(c), KeyModifiers::SHIFT)
+    }
+
+    fn plain(c: char) -> KeyEvent {
+        fake_key(KeyCode::Char(c), KeyModifiers::NONE)
+    }
+
+    fn esc() -> KeyEvent {
+        fake_key(KeyCode::Esc, KeyModifiers::NONE)
+    }
+
+    fn app_with_entries(names: &[&str]) -> App {
+        let root = PathBuf::from("/store");
+        let entries: Vec<PassEntry> = names
+            .iter()
+            .map(|&name| PassEntry {
+                path: root.join(format!("{}.gpg", name)),
+                name: name.to_string(),
+                display_name: name.to_string(),
+                is_dir: false,
+                depth: 0,
+                expanded: false,
+            })
+            .collect();
+        let n = entries.len();
+        let now = Instant::now();
+        App {
+            store_path: root,
+            entries,
+            filtered_entries: (0..n).collect(),
+            selected: 0,
+            scroll_offset: 0,
+            mode: AppMode::Normal,
+            command_buffer: String::new(),
+            command_cursor: 0,
+            search_query: String::new(),
+            show_password: false,
+            show_qr: false,
+            current_content: None,
+            current_entry_path: None,
+            message: None,
+            should_quit: false,
+            editor: None,
+            git_output: String::new(),
+            git_pane: GitPaneState::Uninitialized,
+            git_branch: String::new(),
+            git_ahead: 0,
+            git_behind: 0,
+            git_uncommitted: 0,
+            git_has_upstream: false,
+            git_has_remote: false,
+            git_remote_name: "origin".to_string(),
+            git_status_short: String::new(),
+            needs_clear: false,
+            tui_active: false,
+            git_log: String::new(),
+            git_scroll: 0,
+            git_h_scroll: 0,
+            help_scroll_offset: 0,
+            help_return_mode: AppMode::Normal,
+            entry_to_delete: None,
+            pending_pull: false,
+            pull_return_mode: AppMode::Git,
+            last_reload: now,
+            security_clear_at: None,
+            clipboard_tool: None,
+            last_click: None,
+            context_menu: None,
+            move_source: None,
+            config: Config::default(),
+            preview_scroll_offset: 0,
+            preview_h_scroll: 0,
+            preview_selected_line: None,
+            git_identity_name: String::new(),
+            git_pending_count: 0,
+            last_sync: None,
+            git_last_remote_update: None,
+            new_store_stage: NewStoreStage::Confirm,
+            jump_buf: String::new(),
+            jump_at: None,
+        }
+    }
+
+    fn selected_name(app: &App) -> &str {
+        &app.entries[app.filtered_entries[app.selected]].display_name
+    }
+
+    #[test]
+    fn single_shift_char_jumps_to_first_match() {
+        let mut app = app_with_entries(&["alice", "bob", "carol"]);
+        handle_normal_mode(&mut app, shift('B')).unwrap();
+        assert_eq!(selected_name(&app), "bob");
+        assert_eq!(app.jump_buf, "b");
+    }
+
+    #[test]
+    fn two_shift_chars_narrow_the_jump() {
+        // entries: bob, alice, anna. Start at bob (0).
+        // Pressing A: prefix "a", scan from bob+1 → first 'a' match is alice (1). Land there.
+        // Pressing L next: prefix "al", scan from alice+1 → wraps, only alice matches "al". Stay.
+        let mut app = app_with_entries(&["bob", "alice", "anna"]);
+        handle_normal_mode(&mut app, shift('A')).unwrap();
+        assert_eq!(selected_name(&app), "alice");
+        handle_normal_mode(&mut app, shift('L')).unwrap();
+        assert_eq!(selected_name(&app), "alice");
+        assert_eq!(app.jump_buf, "al");
+    }
+
+    #[test]
+    fn dead_prefix_falls_back_to_last_char() {
+        // "bz" matches nothing; fallback to "z" also matches nothing —
+        // selection stays put, buf is "z".
+        let mut app = app_with_entries(&["alice", "bob", "carol"]);
+        handle_normal_mode(&mut app, shift('B')).unwrap(); // buf = "b", jumps to bob
+        assert_eq!(selected_name(&app), "bob");
+        handle_normal_mode(&mut app, shift('Z')).unwrap(); // "bz" dead, fallback "z" dead
+        assert_eq!(selected_name(&app), "bob", "selection must not move");
+        assert_eq!(app.jump_buf, "z", "buf must be the last char alone");
+    }
+
+    #[test]
+    fn dead_prefix_fallback_matches_last_char() {
+        // "bq" dead, but "q" matches quincy — should land on quincy.
+        let mut app = app_with_entries(&["alice", "bob", "quincy"]);
+        handle_normal_mode(&mut app, shift('B')).unwrap(); // buf = "b"
+        handle_normal_mode(&mut app, shift('Q')).unwrap(); // "bq" dead, fallback "q"→quincy
+        assert_eq!(selected_name(&app), "quincy");
+        assert_eq!(app.jump_buf, "q");
+    }
+
+    #[test]
+    fn timeout_clears_buffer() {
+        let mut app = app_with_entries(&["alice", "bob", "carol"]);
+        handle_normal_mode(&mut app, shift('B')).unwrap();
+        assert_eq!(app.jump_buf, "b");
+        // Backdate jump_at past the timeout threshold.
+        app.jump_at = Some(Instant::now() - JUMP_TIMEOUT - Duration::from_millis(1));
+        handle_normal_mode(&mut app, shift('C')).unwrap();
+        // Buffer was cleared then 'c' pushed → "c", not "bc".
+        assert_eq!(app.jump_buf, "c");
+        assert_eq!(selected_name(&app), "carol");
+    }
+
+    #[test]
+    fn esc_clears_buffer() {
+        let mut app = app_with_entries(&["alice", "bob"]);
+        handle_normal_mode(&mut app, shift('B')).unwrap();
+        assert_eq!(app.jump_buf, "b");
+        handle_normal_mode(&mut app, esc()).unwrap();
+        assert!(app.jump_buf.is_empty());
+        assert!(app.jump_at.is_none());
+    }
+
+    #[test]
+    fn non_shift_alpha_clears_buffer() {
+        let mut app = app_with_entries(&["alice", "bob"]);
+        handle_normal_mode(&mut app, shift('B')).unwrap();
+        assert_eq!(app.jump_buf, "b");
+        // Plain 'j' (move down) should clear the jump buffer.
+        handle_normal_mode(&mut app, plain('j')).unwrap();
+        assert!(app.jump_buf.is_empty());
+        assert!(app.jump_at.is_none());
+    }
+
+    #[test]
+    fn buffer_cleared_on_mode_change_to_search() {
+        let mut app = app_with_entries(&["alice", "bob"]);
+        handle_normal_mode(&mut app, shift('B')).unwrap();
+        assert_eq!(app.jump_buf, "b");
+        handle_normal_mode(&mut app, plain('/')).unwrap();
+        assert!(app.jump_buf.is_empty());
+        assert_eq!(app.mode, AppMode::Search);
+    }
+
+    #[test]
+    fn buffer_cleared_on_mode_change_to_add_folder() {
+        let mut app = app_with_entries(&["alice", "bob"]);
+        handle_normal_mode(&mut app, shift('B')).unwrap();
+        handle_normal_mode(&mut app, plain('f')).unwrap();
+        assert!(app.jump_buf.is_empty());
+        assert_eq!(app.mode, AppMode::AddFolder);
+    }
+
+    /// Shift+uppercase letters must feed the jump buffer and must NOT
+    /// trigger the plain-char actions (e.g. 'q' quits, 'g' opens git pane).
+    #[test]
+    fn test_shift_uppercase_letters_jump_and_do_not_trigger_actions() {
+        // 'Q' with SHIFT must not set should_quit.
+        let mut app = app_with_entries(&["quincy", "zara"]);
+        handle_normal_mode(&mut app, shift('Q')).unwrap();
+        assert!(!app.should_quit, "Shift+Q must not quit");
+        assert_eq!(app.jump_buf, "q");
+
+        // 'G' with SHIFT must not open the git pane.
+        let mut app2 = app_with_entries(&["quincy", "zara"]);
+        handle_normal_mode(&mut app2, shift('G')).unwrap();
+        assert_eq!(app2.mode, AppMode::Normal, "Shift+G must not open git pane");
+        assert_eq!(app2.jump_buf, "g");
+    }
+
+    #[test]
+    fn jj_matches_jj_prefixed_entry() {
+        let mut app = app_with_entries(&["jack", "JJsomething", "jill"]);
+        // Start at jack (0); two 'J' presses: "jj" matches JJsomething.
+        handle_normal_mode(&mut app, shift('J')).unwrap();
+        handle_normal_mode(&mut app, shift('J')).unwrap();
+        assert_eq!(app.jump_buf, "jj");
+        assert_eq!(selected_name(&app).to_lowercase(), "jjsomething");
+    }
 }

@@ -116,6 +116,12 @@ pub struct App {
     /// Stage of the first-run "New Password Store" setup pane, active when
     /// no store directory exists at startup.
     pub new_store_stage: NewStoreStage,
+    /// Accumulated prefix for the Shift+letter type-ahead jump. Cleared on
+    /// Esc, mode changes, or after JUMP_TIMEOUT ms of inactivity.
+    pub jump_buf: String,
+    /// When the last character was added to jump_buf. None when the buffer
+    /// is empty.
+    pub jump_at: Option<Instant>,
 }
 
 /// The sentence the ConfirmDelete bar shows while a pull that would merge
@@ -123,6 +129,7 @@ pub struct App {
 /// confirm_prompt() and ui.rs's ConfirmDelete arm, so the two cannot
 /// drift apart (a pending pull reuses AppMode::ConfirmDelete).
 pub const PULL_CONFIRM_SENTENCE: &str = "Pull would merge - continue? ";
+pub const JUMP_TIMEOUT: Duration = Duration::from_millis(800);
 
 impl App {
     pub fn new() -> Result<Self> {
@@ -182,6 +189,8 @@ impl App {
             last_sync: None,
             git_last_remote_update: None,
             new_store_stage: NewStoreStage::Confirm,
+            jump_buf: String::new(),
+            jump_at: None,
         };
 
         if store_path.exists() {
