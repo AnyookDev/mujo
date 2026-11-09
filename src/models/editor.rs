@@ -736,11 +736,17 @@ mod tests {
         editor.cursor_col = 10;
         editor.move_cursor_up();
         assert_eq!(editor.cursor_line, 2);
-        assert_eq!(editor.cursor_col, 5, "column must clamp to the shorter line");
+        assert_eq!(
+            editor.cursor_col, 5,
+            "column must clamp to the shorter line"
+        );
 
         editor.move_cursor_down();
         assert_eq!(editor.cursor_line, 3);
-        assert_eq!(editor.cursor_col, 5, "column must be preserved when possible");
+        assert_eq!(
+            editor.cursor_col, 5,
+            "column must be preserved when possible"
+        );
     }
 
     #[test]
@@ -749,16 +755,14 @@ mod tests {
         editor.cursor_line = 2;
         editor.move_cursor_up();
         assert_eq!(
-            editor.cursor_line,
-            2,
+            editor.cursor_line, 2,
             "Up from the top content line must not enter Password"
         );
 
         editor.cursor_line = 1;
         editor.move_cursor_down();
         assert_eq!(
-            editor.cursor_line,
-            1,
+            editor.cursor_line, 1,
             "Down from Password must not enter Additional Content"
         );
     }

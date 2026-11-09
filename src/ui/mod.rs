@@ -1,19 +1,18 @@
-pub mod glyphs;
+pub(crate) mod editor;
 pub(crate) mod git_pane;
+pub mod glyphs;
+pub(crate) mod help;
 pub(crate) mod hints;
+pub(crate) mod new_store;
 pub(crate) mod qr;
 pub(crate) mod sidebar;
-pub(crate) mod new_store;
-pub(crate) mod editor;
-pub(crate) mod help;
 pub(crate) mod status_bar;
 
-pub use glyphs::{
-    cap_style, downgrade, effective_glyph_mode, effective_truecolor_mode,
-    glyphs, resolve_glyphs, resolve_truecolor, set_glyphs, set_truecolor,
-    Glyphs, GLYPHS_ASCII, GLYPHS_BMP, GLYPHS_NERD,
-};
 pub(crate) use glyphs::pick_mode;
+pub use glyphs::{
+    cap_style, downgrade, effective_glyph_mode, effective_truecolor_mode, glyphs, resolve_glyphs,
+    resolve_truecolor, set_glyphs, set_truecolor, Glyphs, GLYPHS_ASCII, GLYPHS_BMP, GLYPHS_NERD,
+};
 
 use crate::app::App;
 use crate::models::AppMode;
@@ -136,7 +135,6 @@ pub(crate) fn message_style(msg: &str, text: Color) -> Style {
     }
 }
 
-
 pub(crate) fn relative_time(elapsed: std::time::Duration) -> String {
     let secs = elapsed.as_secs();
     if secs < 30 {
@@ -176,7 +174,6 @@ pub(crate) fn hslice_spans(spans: Vec<Span>, off: usize) -> Vec<Span> {
     }
     result
 }
-
 
 #[cfg(test)]
 mod tests {

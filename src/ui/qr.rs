@@ -1,7 +1,7 @@
 use super::get_colors;
-use crate::utils::hslice;
 use crate::app::App;
 use crate::models::{AppMode, DecryptedContent};
+use crate::utils::hslice;
 use qrcode::QrCode;
 use ratatui::{
     layout::{Alignment, Rect},

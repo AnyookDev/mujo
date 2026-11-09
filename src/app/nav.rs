@@ -224,5 +224,4 @@ impl App {
             None => self.selected = 0,
         }
     }
-
 }

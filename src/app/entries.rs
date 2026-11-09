@@ -309,5 +309,4 @@ impl App {
         self.rebuild_filtered();
         Ok(())
     }
-
 }

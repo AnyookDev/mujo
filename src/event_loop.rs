@@ -1,9 +1,7 @@
 use crate::{app, handlers, keys, models, ui};
 
 use app::App;
-use crossterm::event::{
-    self, Event, KeyEventKind, MouseButton, MouseEvent, MouseEventKind,
-};
+use crossterm::event::{self, Event, KeyEventKind, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 use std::time::{Duration, Instant};

@@ -1,6 +1,5 @@
 use super::App;
 use crate::models::ClipboardTool;
-use std::io::Write;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 

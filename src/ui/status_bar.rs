@@ -1,16 +1,24 @@
+use super::hints::{
+    editor_hints, git_ready_hints, help_hints, key_unit, normal_mode_hints, pack_units,
+};
 use super::{cap_style, get_colors, glyphs, message_style};
-use super::hints::{editor_hints, git_ready_hints, help_hints, key_unit, normal_mode_hints, pack_units};
 use crate::app::{App, PULL_CONFIRM_SENTENCE};
 use crate::models::{AppMode, GitPaneState, NewStoreStage};
 use ratatui::{
+    layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
     Frame,
-    layout::Rect,
 };
 
-pub(crate) fn clamp_menu_rect(click_x: u16, click_y: u16, menu_w: u16, menu_h: u16, frame: Rect) -> Rect {
+pub(crate) fn clamp_menu_rect(
+    click_x: u16,
+    click_y: u16,
+    menu_w: u16,
+    menu_h: u16,
+    frame: Rect,
+) -> Rect {
     let menu_width = menu_w.min(frame.width);
     let menu_height = menu_h.min(frame.height);
     let menu_x = click_x.min(frame.width.saturating_sub(menu_width));
@@ -465,7 +473,6 @@ pub(crate) fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(paragraph, area);
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -509,5 +516,4 @@ mod tests {
         assert_eq!(rect.width, 80);
         assert_eq!(rect.height, 24);
     }
-
 }

@@ -1,6 +1,7 @@
 use crate::config::Config;
 use crate::models::{
-    AppMode, ClipboardTool, ContextMenu, DecryptedContent, EntryEditor, GitPaneState, NewStoreStage, PassEntry, SyncStatus,
+    AppMode, ClipboardTool, ContextMenu, DecryptedContent, EntryEditor, GitPaneState,
+    NewStoreStage, PassEntry, SyncStatus,
 };
 use crate::pass::store_path;
 use crate::password::generate_password;

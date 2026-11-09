@@ -265,4 +265,3 @@ pub(crate) fn draw_editor(f: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 }
-

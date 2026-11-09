@@ -2,7 +2,12 @@ use crate::keys::{self, Action};
 use ratatui::style::Style;
 use ratatui::text::Span;
 
-pub(crate) fn key_unit(key: &str, key_style: Style, action: &str, action_style: Style) -> Vec<Span<'static>> {
+pub(crate) fn key_unit(
+    key: &str,
+    key_style: Style,
+    action: &str,
+    action_style: Style,
+) -> Vec<Span<'static>> {
     vec![
         Span::styled(key.to_string(), key_style),
         Span::styled(action.trim_end().to_string(), action_style),
@@ -106,7 +111,7 @@ enum HintTier {
 /// One Normal-mode helpbar hint: its priority tier, its visible width in
 /// display cells (the labels contain multi-byte arrows, so measuring
 /// bytes would overcount), and its styled spans.
-struct HintUnit {
+pub(crate) struct HintUnit {
     tier: HintTier,
     len: usize,
     unit: Vec<Span<'static>>,
@@ -872,5 +877,4 @@ mod tests {
             "linux help must not mention Fn: {linux}"
         );
     }
-
 }

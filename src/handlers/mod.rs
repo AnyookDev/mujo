@@ -11,8 +11,7 @@ pub use dialogs::{
     handle_move_mode,
 };
 pub use editor::{
-    handle_editor_double_click, handle_editor_mode, handle_editor_mouse,
-    handle_editor_triple_click,
+    handle_editor_double_click, handle_editor_mode, handle_editor_mouse, handle_editor_triple_click,
 };
 pub use git::handle_git_mode;
 pub use help::{handle_help_mode, maybe_open_help, open_help};

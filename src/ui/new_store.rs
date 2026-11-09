@@ -105,4 +105,3 @@ pub(crate) fn draw_new_store(f: &mut Frame, app: &App, area: Rect) {
         }
     }
 }
-

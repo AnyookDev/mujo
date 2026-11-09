@@ -1,22 +1,13 @@
-use mujo::{app, diagnose, handlers, keys, models, ui};
+use mujo::diagnose;
 use mujo::event_loop;
 
 use crossterm::{
+    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
     style::Print,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use std::io;
-
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
-
-fn arg_value(flag: &str) -> Option<String> {
-    let args: Vec<String> = std::env::args().collect();
-    args.iter()
-        .position(|a| a == flag)
-        .and_then(|i| args.get(i + 1))
-        .cloned()
-}
 
 /// Actions that must be resolved before any terminal setup.
 #[derive(Debug, PartialEq, Eq)]
