@@ -7,6 +7,7 @@
 pub mod app;
 pub mod config;
 pub mod diagnose;
+pub mod event_loop;
 pub mod git;
 pub mod handlers;
 pub mod keys;
