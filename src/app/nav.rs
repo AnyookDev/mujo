@@ -186,6 +186,49 @@ impl App {
         }
     }
 
+    /// Find and select the entry identified by a store-relative path such as
+    /// `test/foo` or `test/subfolder`. Expands every ancestor directory so
+    /// the target is visible, then delegates to `select_entry_by_path`.
+    /// Sets an error message when the path does not match any entry.
+    pub fn select_initial_entry(&mut self, path: &str) {
+        let path = path.trim_matches('/');
+        if path.is_empty() {
+            return;
+        }
+
+        let target = self
+            .entries
+            .iter()
+            .find(|e| {
+                let rel = e.path.strip_prefix(&self.store_path).unwrap_or(&e.path);
+                let s = rel.to_string_lossy();
+                let norm = s.strip_suffix(".gpg").unwrap_or(&s);
+                norm == path
+            })
+            .map(|e| e.path.clone());
+
+        let Some(target_path) = target else {
+            self.message = Some((format!("Entry not found: {}", path), Instant::now()));
+            return;
+        };
+
+        // Expand ancestor directories (not the target itself) so the target
+        // is reachable in the filtered list.
+        let mut ancestor = target_path.parent();
+        while let Some(dir) = ancestor {
+            if dir == self.store_path || !dir.starts_with(&self.store_path) {
+                break;
+            }
+            if let Some(e) = self.entries.iter_mut().find(|e| e.is_dir && e.path == dir) {
+                e.expanded = true;
+            }
+            ancestor = dir.parent();
+        }
+
+        self.rebuild_filtered();
+        self.select_entry_by_path(&target_path);
+    }
+
     /// Clear an active search filter and rebuild the full entry list. The
     /// currently selected entry stays selected when it still exists in the
     /// full list (matched by path), so clearing the filter is not

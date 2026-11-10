@@ -26,14 +26,16 @@ pub fn run_app() -> anyhow::Result<()> {
     app.tui_active = true;
     // Combine CLI flag, environment overrides and config into the effective
     // mode before resolving glyphs/truecolor.
-    app.config.display.glyphs =
-        ui::effective_glyph_mode(arg_value("--glyphs").as_deref(), &app.config.display.glyphs);
+    app.config.display.glyphs = ui::effective_glyph_mode(
+        arg_value("--glyphs").or_else(|| arg_value("-g")).as_deref(),
+        &app.config.display.glyphs,
+    );
     app.config.display.truecolor = ui::effective_truecolor_mode(
-        arg_value("--truecolor").as_deref(),
+        arg_value("--truecolor").or_else(|| arg_value("-t")).as_deref(),
         &app.config.display.truecolor,
     );
     app.config.display.keyboard = keys::effective_keyboard_mode(
-        arg_value("--keyboard").as_deref(),
+        arg_value("--keyboard").or_else(|| arg_value("-k")).as_deref(),
         &app.config.display.keyboard,
     );
     // The keyboard platform must be resolved BEFORE the first draw: the
@@ -41,6 +43,9 @@ pub fn run_app() -> anyhow::Result<()> {
     keys::set_keyboard(keys::resolve_keyboard(&app.config.display.keyboard));
     ui::set_glyphs(ui::resolve_glyphs(&app.config.display.glyphs));
     ui::set_truecolor(&app.config.display.truecolor);
+    if let Some(entry_path) = arg_value("--entry").or_else(|| arg_value("-e")) {
+        app.select_initial_entry(&entry_path);
+    }
     let stdout = io::stdout();
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;

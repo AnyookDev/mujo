@@ -31,8 +31,8 @@ where
     let _program = it.next();
     for arg in it {
         match arg.as_ref() {
-            "--diagnose" => return CliAction::Diagnose,
-            "--version" | "-V" => return CliAction::Version,
+            "--diagnose" | "-d" => return CliAction::Diagnose,
+            "--version" | "-V" | "-v" => return CliAction::Version,
             "--help" | "-h" => return CliAction::Help,
             _ => {}
         }
@@ -53,10 +53,15 @@ fn main() -> anyhow::Result<()> {
         CliAction::Help => {
             println!("mujo - a TUI front end for pass");
             println!();
-            println!("Usage: mujo [--diagnose | --version | --help]");
-            println!("  --diagnose  print an environment report and exit");
-            println!("  --version   print the version and exit");
-            println!("  --help      print this help and exit");
+            println!("Usage: mujo [options]");
+            println!("  -e, --entry <path>    start with a specific entry or folder selected");
+            println!("                        e.g. mujo -e test/foo  or  mujo -e test");
+            println!("  -g, --glyphs <mode>   icon set: nerd, bmp, ascii, auto (default: auto)");
+            println!("  -t, --truecolor <mode>  24-bit colour: true, false, auto (default: auto)");
+            println!("  -k, --keyboard <mode> key platform: mac, linux, auto (default: auto)");
+            println!("  -d, --diagnose        print an environment report and exit");
+            println!("  -v, --version         print the version and exit");
+            println!("  -h, --help            print this help and exit");
             println!();
             println!("Key bindings are documented inside the TUI via '?'.");
             return Ok(());
@@ -82,6 +87,7 @@ mod tests {
     fn classify_args_version_flags() {
         assert_eq!(classify_args(["mujo", "--version"]), CliAction::Version);
         assert_eq!(classify_args(["mujo", "-V"]), CliAction::Version);
+        assert_eq!(classify_args(["mujo", "-v"]), CliAction::Version);
     }
 
     #[test]
@@ -93,6 +99,7 @@ mod tests {
     #[test]
     fn classify_args_diagnose_flag() {
         assert_eq!(classify_args(["mujo", "--diagnose"]), CliAction::Diagnose);
+        assert_eq!(classify_args(["mujo", "-d"]), CliAction::Diagnose);
     }
 
     #[test]
