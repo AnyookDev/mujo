@@ -31,11 +31,15 @@ pub fn run_app() -> anyhow::Result<()> {
         &app.config.display.glyphs,
     );
     app.config.display.truecolor = ui::effective_truecolor_mode(
-        arg_value("--truecolor").or_else(|| arg_value("-t")).as_deref(),
+        arg_value("--truecolor")
+            .or_else(|| arg_value("-t"))
+            .as_deref(),
         &app.config.display.truecolor,
     );
     app.config.display.keyboard = keys::effective_keyboard_mode(
-        arg_value("--keyboard").or_else(|| arg_value("-k")).as_deref(),
+        arg_value("--keyboard")
+            .or_else(|| arg_value("-k"))
+            .as_deref(),
         &app.config.display.keyboard,
     );
     // The keyboard platform must be resolved BEFORE the first draw: the

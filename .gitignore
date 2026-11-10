@@ -12,4 +12,3 @@
 *.sync-conflict-*
 dist/
 passtui-debug.log
-refactor-plan.html
