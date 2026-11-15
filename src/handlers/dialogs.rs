@@ -1,6 +1,7 @@
 use crate::app::App;
 use crate::models::AppMode;
 use crate::pass::PassCommand;
+use crate::password::validate_entry_path;
 use anyhow::Result;
 use crossterm::event::KeyCode;
 use std::time::Instant;
@@ -191,6 +192,14 @@ pub fn handle_move_mode(app: &mut App, code: KeyCode) -> Result<()> {
                         "Source and destination are the same".to_string(),
                         Instant::now(),
                     ));
+                    app.mode = AppMode::Normal;
+                    app.command_buffer.clear();
+                    app.move_source = None;
+                    return Ok(());
+                }
+
+                if let Err(e) = validate_entry_path(dest_raw) {
+                    app.message = Some((format!("Error: {}", e), Instant::now()));
                     app.mode = AppMode::Normal;
                     app.command_buffer.clear();
                     app.move_source = None;
@@ -413,5 +422,90 @@ mod tests {
         assert_eq!(normalize_remove_path("VerifyEmpty/"), "VerifyEmpty");
         assert_eq!(normalize_remove_path("Misc/Ebay/"), "Misc/Ebay");
         assert_eq!(normalize_remove_path("Misc/Ebay"), "Misc/Ebay");
+    }
+
+    #[test]
+    fn test_move_rejects_traversal_dest() {
+        // validate_entry_path is called on dest_raw before normalize_dest,
+        // so a ".." segment must produce an error message, not reach pass mv.
+        use crate::app::App;
+        use crate::config::Config;
+        use crate::models::{AppMode, GitPaneState, NewStoreStage, PassEntry};
+        use std::path::PathBuf;
+        use std::time::Instant;
+
+        let root = PathBuf::from("/store");
+        let entry = PassEntry {
+            path: root.join("work.gpg"),
+            name: "work".to_string(),
+            display_name: "work".to_string(),
+            is_dir: false,
+            depth: 0,
+            expanded: false,
+        };
+        let now = Instant::now();
+        let mut app = App {
+            store_path: root,
+            entries: vec![entry],
+            filtered_entries: vec![0],
+            selected: 0,
+            scroll_offset: 0,
+            mode: AppMode::Move,
+            command_buffer: "../evil".to_string(),
+            command_cursor: 0,
+            search_query: String::new(),
+            show_password: false,
+            show_qr: false,
+            current_content: None,
+            current_entry_path: None,
+            message: None,
+            should_quit: false,
+            editor: None,
+            git_output: String::new(),
+            git_pane: GitPaneState::Uninitialized,
+            git_branch: String::new(),
+            git_ahead: 0,
+            git_behind: 0,
+            git_uncommitted: 0,
+            git_has_upstream: false,
+            git_has_remote: false,
+            git_remote_name: "origin".to_string(),
+            git_status_short: String::new(),
+            needs_clear: false,
+            tui_active: false,
+            git_log: String::new(),
+            git_scroll: 0,
+            git_h_scroll: 0,
+            help_scroll_offset: 0,
+            help_return_mode: AppMode::Normal,
+            entry_to_delete: None,
+            pending_pull: false,
+            pull_return_mode: AppMode::Normal,
+            last_reload: now,
+            security_clear_at: None,
+            clipboard_tool: None,
+            last_click: None,
+            context_menu: None,
+            move_source: Some("work".to_string()),
+            config: Config::default(),
+            preview_scroll_offset: 0,
+            preview_h_scroll: 0,
+            preview_selected_line: None,
+            git_identity_name: String::new(),
+            git_pending_count: 0,
+            last_sync: None,
+            git_last_remote_update: None,
+            new_store_stage: NewStoreStage::Confirm,
+            jump_buf: String::new(),
+            jump_at: None,
+        };
+
+        handle_move_mode(&mut app, KeyCode::Enter).unwrap();
+        let msg = app.message.map(|(m, _)| m).unwrap_or_default();
+        assert!(
+            msg.starts_with("Error:"),
+            "traversal dest must produce an Error message: {msg}"
+        );
+        assert_eq!(app.mode, AppMode::Normal);
     }
 }

@@ -36,7 +36,7 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
                 app.show_password = true;
                 return Ok(());
             }
-            (KeyCode::Char('c') | KeyCode::Char('e'), m)
+            (KeyCode::Char('c') | KeyCode::Char('e') | KeyCode::Char('t'), m)
                 if !m.intersects(KeyModifiers::SHIFT | KeyModifiers::CONTROL) =>
             {
                 // Close the QR, then let the normal arm below act.
@@ -239,6 +239,23 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
                     None => "Password copied to clipboard".to_string(),
                 };
                 app.message = Some((msg, Instant::now()));
+            }
+        }
+        KeyCode::Char('t')
+            if !key
+                .modifiers
+                .intersects(KeyModifiers::SHIFT | KeyModifiers::CONTROL) =>
+        {
+            if let Some(content) = &app.current_content {
+                if let Some(totp) = &content.totp {
+                    let code = totp.generate();
+                    app.copy_to_clipboard(&code);
+                    let msg = match app.clipboard_timeout() {
+                        Some(d) => format!("TOTP code copied to clipboard ({}s)", d.as_secs()),
+                        None => "TOTP code copied to clipboard".to_string(),
+                    };
+                    app.message = Some((msg, Instant::now()));
+                }
             }
         }
         KeyCode::Char('n') => app.open_editor(false),
@@ -567,6 +584,19 @@ mod tests {
         handle_normal_mode(&mut app2, shift('G')).unwrap();
         assert_eq!(app2.mode, AppMode::Normal, "Shift+G must not open git pane");
         assert_eq!(app2.jump_buf, "g");
+    }
+
+    #[test]
+    fn t_does_nothing_without_totp() {
+        let mut app = app_with_entries(&["alice"]);
+        // current_content has no TOTP
+        app.current_content = Some(crate::models::DecryptedContent {
+            lines: vec!["password123".to_string()],
+            totp: None,
+        });
+        handle_normal_mode(&mut app, plain('t')).unwrap();
+        // No message set for missing TOTP — message remains None.
+        assert!(app.message.is_none());
     }
 
     #[test]

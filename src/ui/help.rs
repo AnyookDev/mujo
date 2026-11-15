@@ -71,6 +71,7 @@ pub(crate) fn help_entries_for(platform: keys::Platform) -> Vec<String> {
             ("m", "move/rename entry"),
             ("f", "add folder"),
             ("c", "copy password to clipboard"),
+            ("t", "copy TOTP code to clipboard"),
             ("Ctrl+c", "copy password, or the selected line"),
             ("r", "reveal/hide password"),
             ("w", "show/hide password QR code"),

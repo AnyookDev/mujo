@@ -266,6 +266,13 @@ pub(crate) fn normal_mode_hints(
         ));
         hints.push(hint_unit(
             HintTier::Secondary,
+            "t",
+            key_style,
+            ":copy-totp ",
+            dim,
+        ));
+        hints.push(hint_unit(
+            HintTier::Secondary,
             "w",
             key_style,
             ":reveal/hide-pwd-qr ",
@@ -644,6 +651,7 @@ mod tests {
             "e:edit",
             "r:reveal/hide-pwd",
             "c:copy-pwd",
+            "t:copy-totp",
             "w:reveal/hide-pwd-qr",
             "Shift+↑↓:vscroll",
             "Shift+←→:hscroll",

@@ -100,9 +100,6 @@ pub fn password_strength(password: &str) -> Strength {
 /// - "work/"        -> err (trailing slash)
 /// - "a//b"         -> err (empty segment)
 /// - "a/../b"       -> err (traversal)
-// Currently only exercised by the unit tests; remove the allow attribute
-// once path validation is wired into save/move flows.
-#[allow(dead_code)]
 pub fn validate_entry_path(path: &str) -> Result<()> {
     let p = path.trim();
     if p.is_empty() {
@@ -129,9 +126,6 @@ pub fn validate_entry_path(path: &str) -> Result<()> {
 /// Strip newlines and other control characters from a password. `pass`
 /// stores the first line as the password, so embedded newlines would
 /// silently truncate or corrupt entries.
-// Currently only exercised by the unit tests; remove the allow attribute
-// once sanitization is wired into the decrypt flow.
-#[allow(dead_code)]
 pub fn sanitize_password(password: &str) -> String {
     password.chars().filter(|c| !c.is_control()).collect()
 }

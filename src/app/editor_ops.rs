@@ -1,6 +1,7 @@
 use super::App;
 use crate::models::{AppMode, DecryptedContent, EntryEditor};
 use crate::pass::PassCommand;
+use crate::password::{sanitize_password, validate_entry_path};
 use anyhow::Result;
 use std::time::Instant;
 
@@ -107,6 +108,13 @@ impl App {
             ));
             return Ok(false);
         }
+
+        if let Err(e) = validate_entry_path(&path) {
+            self.message = Some((format!("Error: {}", e), Instant::now()));
+            return Ok(false);
+        }
+
+        let content = sanitize_password(&content);
 
         let full_path = self.store_path.join(format!("{}.gpg", path));
         if full_path.exists() && is_new {
