@@ -114,7 +114,14 @@ impl App {
             return Ok(false);
         }
 
-        let content = sanitize_password(&content);
+        let content = {
+            let mut lines = content.splitn(2, '\n');
+            let password = sanitize_password(lines.next().unwrap_or(""));
+            match lines.next() {
+                Some(rest) => format!("{}\n{}", password, rest),
+                None => password,
+            }
+        };
 
         let full_path = self.store_path.join(format!("{}.gpg", path));
         if full_path.exists() && is_new {
