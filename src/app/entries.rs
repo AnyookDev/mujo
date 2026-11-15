@@ -126,7 +126,11 @@ impl App {
                     match (a_is_dir, b_is_dir) {
                         (true, false) => std::cmp::Ordering::Less,
                         (false, true) => std::cmp::Ordering::Greater,
-                        _ => a.file_name().cmp(b.file_name()),
+                        _ => {
+                            let a_name = a.file_name().to_string_lossy().to_lowercase();
+                            let b_name = b.file_name().to_string_lossy().to_lowercase();
+                            a_name.cmp(&b_name)
+                        }
                     }
                 } else {
                     std::cmp::Ordering::Equal
