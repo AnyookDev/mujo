@@ -36,9 +36,10 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
                 app.show_password = true;
                 return Ok(());
             }
-            (KeyCode::Char('c') | KeyCode::Char('e') | KeyCode::Char('t'), m)
-                if !m.intersects(KeyModifiers::SHIFT | KeyModifiers::CONTROL) =>
-            {
+            (
+                KeyCode::Char('c') | KeyCode::Char('e') | KeyCode::Char('t') | KeyCode::Char('u'),
+                m,
+            ) if !m.intersects(KeyModifiers::SHIFT | KeyModifiers::CONTROL) => {
                 // Close the QR, then let the normal arm below act.
                 app.show_qr = false;
             }
@@ -239,6 +240,30 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
                     None => "Password copied to clipboard".to_string(),
                 };
                 app.message = Some((msg, Instant::now()));
+            }
+        }
+        KeyCode::Char('u')
+            if !key
+                .modifiers
+                .intersects(KeyModifiers::SHIFT | KeyModifiers::CONTROL) =>
+        {
+            if let Some(content) = &app.current_content {
+                match content.username.clone() {
+                    Some(username) => {
+                        app.copy_to_clipboard(&username);
+                        let msg = match app.clipboard_timeout() {
+                            Some(d) => format!("Username copied to clipboard ({}s)", d.as_secs()),
+                            None => "Username copied to clipboard".to_string(),
+                        };
+                        app.message = Some((msg, Instant::now()));
+                    }
+                    // No fallback to the password: say so and copy nothing.
+                    // Covers both a missing key and a key with an empty value.
+                    None => {
+                        app.message =
+                            Some(("No username in this entry".to_string(), Instant::now()));
+                    }
+                }
             }
         }
         KeyCode::Char('t')
@@ -593,9 +618,57 @@ mod tests {
         app.current_content = Some(crate::models::DecryptedContent {
             lines: vec!["password123".to_string()],
             totp: None,
+            username: None,
         });
         handle_normal_mode(&mut app, plain('t')).unwrap();
         // No message set for missing TOTP — message remains None.
+        assert!(app.message.is_none());
+    }
+
+    /// Entry content parsed from text, so the handler tests exercise the
+    /// same key matching the real decrypt path uses.
+    fn parsed(text: &str) -> crate::models::DecryptedContent {
+        crate::models::DecryptedContent::parse(text)
+    }
+
+    /// `u` copies the value under a username key, not the password line
+    /// and not the label.
+    #[test]
+    fn u_copies_username_value_without_label() {
+        let mut app = app_with_entries(&["alice"]);
+        app.current_content = Some(parsed("hunter2\nUsername: alice"));
+        handle_normal_mode(&mut app, plain('u')).unwrap();
+        let (msg, _) = app.message.clone().expect("a message must be set");
+        assert!(msg.starts_with("Username copied"), "{msg}");
+        assert_eq!(
+            app.current_content.as_ref().unwrap().username.as_deref(),
+            Some("alice")
+        );
+    }
+
+    /// With no username key, `u` reports it and copies nothing: the password
+    /// on the first line is never used, the clipboard backend is never
+    /// selected and no auto-clear is scheduled.
+    #[test]
+    fn u_without_username_key_reports_and_does_not_copy_password() {
+        let mut app = app_with_entries(&["alice"]);
+        app.current_content = Some(parsed("hunter2\nurl: example.com"));
+        handle_normal_mode(&mut app, plain('u')).unwrap();
+        let (msg, _) = app.message.clone().expect("a message must be set");
+        assert_eq!(msg, "No username in this entry");
+        assert!(app.clipboard_tool.is_none(), "nothing may be copied");
+        assert!(app.security_clear_at.is_none());
+    }
+
+    /// Shift+U must not copy: it feeds the jump buffer like any Shift+letter.
+    #[test]
+    fn shift_u_jumps_and_does_not_copy() {
+        let mut app = app_with_entries(&["alice", "uma", "bob"]);
+        app.current_content = Some(parsed("hunter2\nusername: alice"));
+        handle_normal_mode(&mut app, shift('U')).unwrap();
+        assert_eq!(app.jump_buf, "u");
+        assert_eq!(selected_name(&app), "uma");
+        assert!(app.clipboard_tool.is_none(), "Shift+U must not copy");
         assert!(app.message.is_none());
     }
 

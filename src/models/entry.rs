@@ -43,12 +43,14 @@ impl PassEntry {
 pub struct DecryptedContent {
     pub lines: Vec<String>,
     pub totp: Option<Totp>,
+    pub username: Option<String>,
 }
 
 impl DecryptedContent {
     pub fn parse(content: &str) -> Self {
         let lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
         let mut totp = None;
+        let mut username = None;
         for line in &lines {
             if let Some((key, value)) = line.split_once(": ") {
                 if key.to_lowercase() == "totp" || key.to_lowercase() == "otp" {
@@ -59,7 +61,25 @@ impl DecryptedContent {
                 }
             }
         }
-        Self { lines, totp }
+        // Username: the first non-empty value under a username/user/login
+        // key, matched the same way as the TOTP key above.
+        for line in &lines {
+            if let Some((key, value)) = line.split_once(": ") {
+                let key = key.to_lowercase();
+                if key == "username" || key == "user" || key == "login" {
+                    let value = value.trim();
+                    if !value.is_empty() {
+                        username = Some(value.to_string());
+                        break;
+                    }
+                }
+            }
+        }
+        Self {
+            lines,
+            totp,
+            username,
+        }
     }
 }
 
@@ -125,5 +145,35 @@ mod tests {
     fn test_parse_skips_invalid_totp_secret() {
         let content = DecryptedContent::parse("secret\ntotp: !!!");
         assert!(content.totp.is_none());
+    }
+
+    #[test]
+    fn test_parse_detects_username_key_case_insensitive() {
+        let content = DecryptedContent::parse("secret\nUsername: alice");
+        assert_eq!(content.username.as_deref(), Some("alice"));
+        let content = DecryptedContent::parse("secret\nLOGIN: bob");
+        assert_eq!(content.username.as_deref(), Some("bob"));
+        let content = DecryptedContent::parse("secret\nUser: carol");
+        assert_eq!(content.username.as_deref(), Some("carol"));
+    }
+
+    #[test]
+    fn test_parse_finds_username_on_any_line() {
+        let content = DecryptedContent::parse("secret\nurl: x.example\nnote: hi\nusername: dave");
+        assert_eq!(content.username.as_deref(), Some("dave"));
+    }
+
+    #[test]
+    fn test_parse_ignores_unrelated_keys_for_username() {
+        let content = DecryptedContent::parse("secret\nusernames: nope\nmy-user: nope2\nnote: x");
+        assert!(content.username.is_none());
+    }
+
+    #[test]
+    fn test_parse_empty_username_value_yields_none() {
+        let content = DecryptedContent::parse("secret\nusername:    ");
+        assert!(content.username.is_none());
+        let content = DecryptedContent::parse("secret\nusername: ");
+        assert!(content.username.is_none());
     }
 }

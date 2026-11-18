@@ -266,6 +266,13 @@ pub(crate) fn normal_mode_hints(
         ));
         hints.push(hint_unit(
             HintTier::Secondary,
+            "u",
+            key_style,
+            ":copy-user ",
+            dim,
+        ));
+        hints.push(hint_unit(
+            HintTier::Secondary,
             "t",
             key_style,
             ":copy-totp ",

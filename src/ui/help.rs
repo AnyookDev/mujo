@@ -10,6 +10,16 @@ use ratatui::{
     Frame,
 };
 
+/// Marks a line drawn entirely in the value colour (no separate key
+/// colour). The rest of the row keeps the 14-cell key column layout.
+const VALUE_ROW: char = '\u{1}';
+
+/// A text line shown entirely in the value colour. The key is followed by a
+/// single space, with no padding to the keybinding columns.
+fn value_row(key: &str, value: &str) -> String {
+    format!("{VALUE_ROW}{} {}", key, value)
+}
+
 fn push_help_group(lines: &mut Vec<String>, heading: &str, entries: &[(&str, &str)]) {
     lines.push(String::new());
     lines.push(heading.to_string());
@@ -72,6 +82,7 @@ pub(crate) fn help_entries_for(platform: keys::Platform) -> Vec<String> {
             ("f", "add folder"),
             ("c", "copy password to clipboard"),
             ("t", "copy TOTP code to clipboard"),
+            ("u", "copy username to clipboard"),
             ("Ctrl+c", "copy password, or the selected line"),
             ("r", "reveal/hide password"),
             ("w", "show/hide password QR code"),
@@ -135,6 +146,17 @@ pub(crate) fn help_entries_for(platform: keys::Platform) -> Vec<String> {
         ],
     );
 
+    // Entry formatting: how to write an entry so the t and u copy keys have
+    // something to copy. Prose lines (two-space prefix) render as notes.
+    push_help_group(&mut lines, "ENTRY FORMATTING", &[]);
+    lines.push("  Entries can have the following special key/value pairs:".to_string());
+    lines.push(String::new());
+    lines.push(value_row("totp:", "<your totp secret>"));
+    lines.push(value_row("username:", "<your username>"));
+    lines.push(String::new());
+    lines.push("  Press t to copy the 6-digit totp code".to_string());
+    lines.push("  Press u to copy the username".to_string());
+
     // Platform caveats and the universal help key, as prose lines. The
     // leading two spaces make draw_help render them as note paragraphs
     // (secondary color) instead of key/description pairs. The macOS
@@ -153,6 +175,12 @@ pub(crate) fn help_entries_for(platform: keys::Platform) -> Vec<String> {
     lines.push("  Ctrl+/ or F1 opens this help from any mode.".to_string());
 
     lines
+}
+
+/// A group heading: uppercase letters and spaces only ("NORMAL", "ENTRY
+/// FORMATTING"). Key/description rows and prose notes never match.
+pub(crate) fn is_group_heading(line: &str) -> bool {
+    !line.is_empty() && line.chars().all(|c| c.is_ascii_uppercase() || c == ' ')
 }
 
 /// Full-screen help view (AppMode::Help): a titled block with a scrollable
@@ -184,16 +212,23 @@ pub(crate) fn draw_help(f: &mut Frame, app: &mut App, area: Rect) {
         .map(|l| {
             if l.is_empty() {
                 Line::from("")
-            } else if l.chars().all(|c| c.is_ascii_uppercase()) {
+            } else if is_group_heading(l) {
                 // Group heading: bold text colour, so the headings read by
                 // weight rather than by accent.
                 Line::from(Span::styled(
                     l.clone(),
                     Style::default().fg(text).add_modifier(Modifier::BOLD),
                 ))
+            } else if let Some(row) = l.strip_prefix(VALUE_ROW) {
+                // Value row: the whole row in the value (text) colour.
+                Line::from(Span::styled(row.to_string(), Style::default().fg(text)))
             } else if l.starts_with("  ") {
-                // Note paragraph.
-                Line::from(Span::styled(l.clone(), Style::default().fg(secondary)))
+                // Note paragraph. The leading spaces are only the note marker
+                // and are not drawn, so notes sit flush left like key rows.
+                Line::from(Span::styled(
+                    l.trim_start().to_string(),
+                    Style::default().fg(secondary),
+                ))
             } else {
                 // Key/description pair: the key is padded to 14 cells.
                 let key: String = l.chars().take(14).collect();
@@ -210,4 +245,44 @@ pub(crate) fn draw_help(f: &mut Frame, app: &mut App, area: Rect) {
         .collect();
 
     f.render_widget(Paragraph::new(Text::from(lines)), inner);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The ENTRY FORMATTING section sits after GIT and before the platform
+    /// caveats, is recognised as a heading (it contains a space), and tells
+    /// users the exact keys the t and u copy bindings read.
+    #[test]
+    fn entry_formatting_section_is_placed_and_documents_keys() {
+        let lines = help_entries_for(keys::Platform::Linux);
+        let pos = |needle: &str| {
+            lines
+                .iter()
+                .position(|l| l == needle)
+                .unwrap_or_else(|| panic!("missing line: {needle}"))
+        };
+        let git = pos("GIT");
+        let fmt = pos("ENTRY FORMATTING");
+        let caveat = pos("  Ctrl+/ or F1 opens this help from any mode.");
+        assert!(git < fmt && fmt < caveat, "section out of order");
+        assert!(is_group_heading(&lines[fmt]));
+        let text = lines.join("\n");
+        // Value rows: the key is padded to the 14-cell key column and the
+        // row is marked for the value colour.
+        assert!(lines.contains(&value_row("totp:", "<your totp secret>")));
+        assert!(lines.contains(&value_row("username:", "<your username>")));
+        assert!(text.contains("Press t to copy the 6-digit totp code"));
+        assert!(text.contains("Press u to copy the username"));
+    }
+
+    #[test]
+    fn group_heading_detection() {
+        assert!(is_group_heading("NORMAL"));
+        assert!(is_group_heading("ENTRY FORMATTING"));
+        assert!(!is_group_heading(""));
+        assert!(!is_group_heading("Enter"));
+        assert!(!is_group_heading("  Ctrl+/ or F1 opens this help"));
+    }
 }
