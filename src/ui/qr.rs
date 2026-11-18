@@ -217,14 +217,21 @@ pub(crate) fn draw_preview(f: &mut Frame, app: &mut App, area: Rect) {
         .border_type(BorderType::Plain)
         .border_style(Style::default().fg(secondary));
 
-    // While the editor is open (or its unsaved-changes confirmation is
-    // pending), the preview shows the PENDING content being edited - parsed
-    // from the editor's current state - instead of the on-disk original, so
-    // the user sees exactly what they are about to save or discard. The
-    // password stays masked by the usual show_password logic.
+    // While the editor is open, or either of its confirmation prompts is
+    // pending (ConfirmSave: "save changes?", ConfirmDiscard: "discard?"),
+    // the preview shows the PENDING content being edited - parsed from the
+    // editor's current state - instead of the on-disk original, so the user
+    // sees exactly what they are about to save or discard. Without
+    // ConfirmSave here, the first Ctrl+S press (which triggers the
+    // confirmation) would flip the preview back to the stale on-disk content
+    // while the prompt is showing, which looked like the edit had been lost.
+    // The password stays masked by the usual show_password logic.
     // current_content is left untouched: on discard it still holds the
     // original on-disk content, which the preview falls back to.
-    let pending_content = if matches!(app.mode, AppMode::Editor | AppMode::ConfirmDiscard) {
+    let pending_content = if matches!(
+        app.mode,
+        AppMode::Editor | AppMode::ConfirmDiscard | AppMode::ConfirmSave
+    ) {
         app.editor
             .as_ref()
             .map(|e| DecryptedContent::parse(&e.to_content()))
