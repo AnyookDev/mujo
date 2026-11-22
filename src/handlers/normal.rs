@@ -272,14 +272,19 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
                 .intersects(KeyModifiers::SHIFT | KeyModifiers::CONTROL) =>
         {
             if let Some(content) = &app.current_content {
-                if let Some(totp) = &content.totp {
-                    let code = totp.generate();
-                    app.copy_to_clipboard(&code);
-                    let msg = match app.clipboard_timeout() {
-                        Some(d) => format!("TOTP code copied to clipboard ({}s)", d.as_secs()),
-                        None => "TOTP code copied to clipboard".to_string(),
-                    };
-                    app.message = Some((msg, Instant::now()));
+                match &content.totp {
+                    Some(totp) => {
+                        let code = totp.generate();
+                        app.copy_to_clipboard(&code);
+                        let msg = match app.clipboard_timeout() {
+                            Some(d) => format!("TOTP code copied to clipboard ({}s)", d.as_secs()),
+                            None => "TOTP code copied to clipboard".to_string(),
+                        };
+                        app.message = Some((msg, Instant::now()));
+                    }
+                    None => {
+                        app.message = Some(("No totp in this entry".to_string(), Instant::now()));
+                    }
                 }
             }
         }
@@ -612,7 +617,7 @@ mod tests {
     }
 
     #[test]
-    fn t_does_nothing_without_totp() {
+    fn t_without_totp_reports_and_copies_nothing() {
         let mut app = app_with_entries(&["alice"]);
         // current_content has no TOTP
         app.current_content = Some(crate::models::DecryptedContent {
@@ -621,8 +626,8 @@ mod tests {
             username: None,
         });
         handle_normal_mode(&mut app, plain('t')).unwrap();
-        // No message set for missing TOTP — message remains None.
-        assert!(app.message.is_none());
+        let (msg, _) = app.message.as_ref().expect("message should be set");
+        assert_eq!(msg, "No totp in this entry");
     }
 
     /// Entry content parsed from text, so the handler tests exercise the
