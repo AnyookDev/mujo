@@ -36,6 +36,8 @@ impl App {
         if cfg!(target_os = "macos") {
             if Command::new("pbcopy")
                 .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
                 .spawn()
                 .map(|mut child| {
                     if let Some(stdin) = child.stdin.as_mut() {
@@ -52,7 +54,13 @@ impl App {
                 return;
             }
         } else {
-            if Command::new("wl-copy").arg(text).spawn().is_ok() {
+            if Command::new("wl-copy")
+                .arg(text)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .is_ok()
+            {
                 self.clipboard_tool = Some(ClipboardTool::WlCopy);
                 self.message = Some(("Copied to clipboard!".to_string(), Instant::now()));
                 self.security_clear_at = self.clipboard_timeout().map(|d| Instant::now() + d);
@@ -62,6 +70,8 @@ impl App {
             if Command::new("xclip")
                 .args(["-selection", "clipboard"])
                 .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
                 .spawn()
                 .map(|mut child| {
                     if let Some(stdin) = child.stdin.as_mut() {
@@ -128,19 +138,32 @@ impl App {
     pub fn clear_clipboard(&mut self) {
         match self.clipboard_tool {
             Some(ClipboardTool::WlCopy) => {
-                let _ = Command::new("wl-copy").arg("--clear").spawn();
+                let _ = Command::new("wl-copy")
+                    .arg("--clear")
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn();
             }
             Some(ClipboardTool::Pbcopy) => {
-                let _ = Command::new("sh").arg("-c").arg("echo -n | pbcopy").spawn();
+                let _ = Command::new("sh")
+                    .arg("-c")
+                    .arg("echo -n | pbcopy")
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn();
             }
             Some(ClipboardTool::Xclip) => {
                 let _ = Command::new("sh")
                     .arg("-c")
                     .arg("echo -n | xclip -selection clipboard")
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
                     .spawn();
                 let _ = Command::new("sh")
                     .arg("-c")
                     .arg("echo -n | xclip -selection primary")
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
                     .spawn();
             }
             None => {}
