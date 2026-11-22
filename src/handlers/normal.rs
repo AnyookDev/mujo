@@ -232,14 +232,15 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
                 .and_then(|content| content.lines.first().cloned());
 
             if let Some(password) = password_to_copy {
-                app.copy_to_clipboard(&password);
-                // Keep the "(Ns)" hint in sync with the configured timeout;
-                // when auto-clear is disabled no countdown is shown.
-                let msg = match app.clipboard_timeout() {
-                    Some(d) => format!("Password copied to clipboard ({}s)", d.as_secs()),
-                    None => "Password copied to clipboard".to_string(),
-                };
-                app.message = Some((msg, Instant::now()));
+                if app.copy_to_clipboard(&password) {
+                    // Keep the "(Ns)" hint in sync with the configured timeout;
+                    // when auto-clear is disabled no countdown is shown.
+                    let msg = match app.clipboard_timeout() {
+                        Some(d) => format!("Password copied to clipboard ({}s)", d.as_secs()),
+                        None => "Password copied to clipboard".to_string(),
+                    };
+                    app.message = Some((msg, Instant::now()));
+                }
             }
         }
         KeyCode::Char('u')
@@ -250,12 +251,15 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
             if let Some(content) = &app.current_content {
                 match content.username.clone() {
                     Some(username) => {
-                        app.copy_to_clipboard(&username);
-                        let msg = match app.clipboard_timeout() {
-                            Some(d) => format!("Username copied to clipboard ({}s)", d.as_secs()),
-                            None => "Username copied to clipboard".to_string(),
-                        };
-                        app.message = Some((msg, Instant::now()));
+                        if app.copy_to_clipboard(&username) {
+                            let msg = match app.clipboard_timeout() {
+                                Some(d) => {
+                                    format!("Username copied to clipboard ({}s)", d.as_secs())
+                                }
+                                None => "Username copied to clipboard".to_string(),
+                            };
+                            app.message = Some((msg, Instant::now()));
+                        }
                     }
                     // No fallback to the password: say so and copy nothing.
                     // Covers both a missing key and a key with an empty value.
@@ -275,12 +279,15 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
                 match &content.totp {
                     Some(totp) => {
                         let code = totp.generate();
-                        app.copy_to_clipboard(&code);
-                        let msg = match app.clipboard_timeout() {
-                            Some(d) => format!("TOTP code copied to clipboard ({}s)", d.as_secs()),
-                            None => "TOTP code copied to clipboard".to_string(),
-                        };
-                        app.message = Some((msg, Instant::now()));
+                        if app.copy_to_clipboard(&code) {
+                            let msg = match app.clipboard_timeout() {
+                                Some(d) => {
+                                    format!("TOTP code copied to clipboard ({}s)", d.as_secs())
+                                }
+                                None => "TOTP code copied to clipboard".to_string(),
+                            };
+                            app.message = Some((msg, Instant::now()));
+                        }
                     }
                     None => {
                         app.message = Some(("No totp in this entry".to_string(), Instant::now()));

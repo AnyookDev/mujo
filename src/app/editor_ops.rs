@@ -193,8 +193,16 @@ impl App {
         let password =
             self.with_alt_repair(true, || PassCommand::generate(&new_path, length, false))?;
 
-        self.copy_to_clipboard(&password);
-        self.message = Some((format!("Generated: {}", new_path), Instant::now()));
+        // Generation succeeded either way; a failed copy keeps the
+        // "Failed to copy" message that copy_to_clipboard set.
+        if self.copy_to_clipboard(&password) {
+            self.message = Some((format!("Generated: {}", new_path), Instant::now()));
+        } else {
+            self.message = Some((
+                format!("Generated: {} (copy failed)", new_path),
+                Instant::now(),
+            ));
+        }
         self.reload_entries()?;
 
         Ok(())

@@ -50,4 +50,7 @@ pub enum ClipboardTool {
     WlCopy,
     Pbcopy,
     Xclip,
+    /// OSC 52 escape sequence written to the terminal. Used over SSH, where
+    /// no local clipboard tool can reach the user's machine.
+    Osc52,
 }
