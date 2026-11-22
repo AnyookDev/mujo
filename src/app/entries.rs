@@ -314,3 +314,118 @@ impl App {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testenv::EnvGuard;
+    use std::process::Command;
+
+    fn temp_app(tui_active: bool) -> App {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let home = dir.path().to_str().unwrap().to_string();
+        let _env = EnvGuard::set(&[
+            ("PASSWORD_STORE_DIR", Some(home.as_str())),
+            ("HOME", Some(home.as_str())),
+            ("XDG_CONFIG_HOME", None),
+        ]);
+        let mut app = App::new().expect("app");
+        app.tui_active = tui_active;
+        app
+    }
+
+    #[test]
+    fn create_folder_seeds_gitkeep() {
+        let mut app = temp_app(false);
+        app.create_folder("work").expect("create folder");
+        assert!(app.store_path.join("work").join(".gitkeep").is_file());
+    }
+
+    /// Creating a folder in a git-tracked store must COMMIT, not just
+    /// stage: a push sends only commits and the ahead count is derived
+    /// from commits. Uses a real repo with a bare remote as upstream so
+    /// the ahead count is observable.
+    #[test]
+    fn create_folder_commits_and_increments_ahead() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let home = dir.path().to_str().unwrap().to_string();
+        let _env = EnvGuard::set(&[
+            ("PASSWORD_STORE_DIR", Some(home.as_str())),
+            ("HOME", Some(home.as_str())),
+            ("XDG_CONFIG_HOME", None),
+        ]);
+        let mut app = App::new().expect("app");
+        app.tui_active = false;
+
+        let run = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(args)
+                .current_dir(&app.store_path)
+                .output()
+                .expect("git");
+            assert!(
+                out.status.success(),
+                "git {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+
+        // Repo with an identity and a bare remote as tracked upstream.
+        run(&["init"]);
+        run(&["config", "user.name", "Test"]);
+        run(&["config", "user.email", "test@example.com"]);
+        run(&["commit", "--allow-empty", "-m", "Initial commit"]);
+        let bare = tempfile::TempDir::new().expect("bare tempdir");
+        let bare_path = bare.path().to_str().unwrap().to_string();
+        run(&["init", "--bare", &bare_path]);
+        run(&["remote", "add", "origin", &bare_path]);
+        run(&["push", "-u", "origin", "HEAD"]);
+
+        app.refresh_git_info();
+        assert_eq!(app.git_ahead, 0, "upstream must start in sync");
+
+        app.create_folder("work").expect("create folder");
+
+        let subject = Command::new("git")
+            .args(["log", "-1", "--format=%s"])
+            .current_dir(&app.store_path)
+            .output()
+            .expect("git log");
+        assert_eq!(
+            String::from_utf8_lossy(&subject.stdout).trim(),
+            "Add folder work to store."
+        );
+
+        app.refresh_git_info();
+        assert_eq!(app.git_ahead, 1, "folder commit must count as ahead");
+    }
+
+    /// A user-initiated decrypt (Enter/reveal/edit load) hands the
+    /// terminal over for pass show's gpg/pinentry child; the preview
+    /// refresh (interactive=false) must not. The store points at a temp
+    /// directory, so the spawned `pass show` fails fast on the bogus
+    /// file without ever reaching a real entry.
+    #[test]
+    fn interactive_show_sets_handover_flag_but_preview_does_not() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let home = dir.path().to_str().unwrap().to_string();
+        let _env = EnvGuard::set(&[
+            ("PASSWORD_STORE_DIR", Some(home.as_str())),
+            ("HOME", Some(home.as_str())),
+            ("XDG_CONFIG_HOME", None),
+        ]);
+        let mut app = App::new().expect("app");
+        app.tui_active = true;
+        std::fs::write(app.store_path.join("a.gpg"), "not a real gpg file").expect("write entry");
+        app.load_entries().expect("load entries");
+        app.rebuild_filtered();
+
+        let _ = app.decrypt_current_entry(true);
+        assert!(app.needs_clear);
+
+        app.needs_clear = false;
+        let _ = app.decrypt_current_entry(false);
+        assert!(!app.needs_clear);
+    }
+}

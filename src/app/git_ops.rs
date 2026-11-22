@@ -970,3 +970,475 @@ impl App {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testenv::EnvGuard;
+    use std::process::Command;
+
+    fn temp_app(tui_active: bool) -> App {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let home = dir.path().to_str().unwrap().to_string();
+        let _env = EnvGuard::set(&[
+            ("PASSWORD_STORE_DIR", Some(home.as_str())),
+            ("HOME", Some(home.as_str())),
+            ("XDG_CONFIG_HOME", None),
+        ]);
+        let mut app = App::new().expect("app");
+        app.tui_active = tui_active;
+        app
+    }
+
+    #[test]
+    fn noop_push_reports_up_to_date() {
+        let action = App::sync_success_action("Pushed to", "Everything up-to-date");
+        assert_eq!(action, "Up to date");
+        assert_ne!(action, "Pushed to");
+    }
+
+    #[test]
+    fn real_push_keeps_pushed_wording() {
+        let out = "To /tmp/store\n   abc123..def456  main -> main\n";
+        assert_eq!(App::sync_success_action("Pushed to", out), "Pushed to");
+    }
+
+    #[test]
+    fn noop_pull_reports_up_to_date() {
+        let action = App::sync_success_action("Pulled from", "Already up to date.");
+        assert_eq!(action, "Up to date");
+        assert_ne!(action, "Pulled from");
+    }
+
+    #[test]
+    fn real_pull_keeps_pulled_wording() {
+        let out = "Updating abc123..def456\nFast-forward\n  file | 1 +\n";
+        assert_eq!(App::sync_success_action("Pulled from", out), "Pulled from");
+    }
+
+    #[test]
+    fn pull_needs_confirm_classifies_outcomes() {
+        // Diverged: the pull will merge.
+        assert!(App::pull_needs_confirm(1, 2, 0));
+        // Dirty tree and behind: the merge may abort or conflict.
+        assert!(App::pull_needs_confirm(0, 1, 3));
+        // Clean fast-forward: no confirmation.
+        assert!(!App::pull_needs_confirm(0, 2, 0));
+        // Up to date and clean.
+        assert!(!App::pull_needs_confirm(0, 0, 0));
+        // Dirty but not behind: the pull is a no-op.
+        assert!(!App::pull_needs_confirm(0, 0, 5));
+    }
+
+    #[test]
+    fn empty_output_falls_back_to_formatted_line() {
+        assert_eq!(
+            App::sync_output("", "Pushed to origin".to_string()),
+            "Pushed to origin"
+        );
+        assert_eq!(
+            App::sync_output("   \n\t", "Pushed to origin".to_string()),
+            "Pushed to origin"
+        );
+        assert_eq!(
+            App::sync_output("To origin\n", "fallback".to_string()),
+            "To origin\n"
+        );
+    }
+
+    #[test]
+    fn pull_args_include_no_rebase() {
+        let args = App::pull_args_with_strategy("origin", Some("main"));
+        assert!(
+            args.iter().any(|a| a == "--no-rebase"),
+            "pull args must contain --no-rebase: {:?}",
+            args
+        );
+        assert!(args.contains(&"origin".to_string()));
+        assert!(args.contains(&"main".to_string()));
+    }
+
+    #[test]
+    fn merge_upstream_args_include_no_edit() {
+        let args = App::merge_upstream_args("@{u}");
+        assert!(
+            args.iter().any(|a| a == "--no-edit"),
+            "merge args must contain --no-edit: {:?}",
+            args
+        );
+        assert!(args.contains(&"merge".to_string()));
+        assert!(args.contains(&"@{u}".to_string()));
+    }
+
+    #[test]
+    fn pull_outcome_classified_from_head_state() {
+        // HEAD unchanged by the pull: nothing was transferred.
+        assert_eq!(
+            App::classify_pull_outcome(Some("abc123"), Some("abc123"), 1),
+            "Already up to date"
+        );
+        // New HEAD with more than one parent: the pull merged.
+        assert_eq!(
+            App::classify_pull_outcome(Some("abc123"), Some("def456"), 2),
+            "Merged"
+        );
+        // New HEAD with a single parent: fast-forward.
+        assert_eq!(
+            App::classify_pull_outcome(Some("abc123"), Some("def456"), 1),
+            "Fast-forwarded"
+        );
+    }
+
+    /// A remote-less store (git init only, no remote): git_fetch blocks
+    /// with the "no remote configured" Sync line and pull_with_confirm
+    /// must stop there - no merge may run whose raw git error ("No
+    /// upstream configured for branch ...") overwrites that message.
+    #[test]
+    fn pull_with_confirm_without_remote_keeps_blocked_message() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let home = dir.path().to_str().unwrap().to_string();
+        let _env = EnvGuard::set(&[
+            ("PASSWORD_STORE_DIR", Some(home.as_str())),
+            ("HOME", Some(home.as_str())),
+            ("XDG_CONFIG_HOME", None),
+        ]);
+        let mut app = App::new().expect("app");
+
+        std::fs::create_dir_all(&app.store_path).expect("store dir");
+        let store_dir = app.store_path.clone();
+        let run = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(args)
+                .current_dir(&store_dir)
+                .output()
+                .expect("git");
+            assert!(
+                out.status.success(),
+                "git {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+
+        run(&["init"]);
+        run(&["config", "user.name", "Test"]);
+        run(&["config", "user.email", "test@example.com"]);
+
+        app.pull_with_confirm();
+
+        // The Sync line still reflects the blocked fetch, not a merge
+        // error, and names the actual problem.
+        let sync = app.last_sync.expect("blocked fetch recorded on Sync line");
+        assert!(!sync.success);
+        assert!(
+            sync.detail.contains("no remote"),
+            "detail must name the missing remote: {}",
+            sync.detail
+        );
+        assert!(
+            app.message
+                .as_ref()
+                .map(|(m, _)| m.contains("no remote configured"))
+                .unwrap_or(false),
+            "message must keep the blocked-fetch wording"
+        );
+        // No merge ran: the confirmation prompt was never raised.
+        assert!(!app.pending_pull);
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn pull_confirm_prompt_differs_from_delete_prompt() {
+        let mut app = temp_app(false);
+        assert_eq!(
+            app.confirm_prompt(),
+            "Delete this entry? y:confirm n:cancel"
+        );
+        app.pending_pull = true;
+        assert_eq!(
+            app.confirm_prompt(),
+            "Pull would merge - continue? y:confirm n:cancel"
+        );
+    }
+
+    /// A store with no remotes: remotes() lists nothing (whether or not
+    /// git is even initialized), a sole remote resolves to itself, and
+    /// with none at all resolve_remote_name errs with the fix-it hint
+    /// instead of returning a literal "origin" that git would fail to
+    /// resolve.
+    #[test]
+    fn remotes_and_resolve_remote_name_without_remotes() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let home = dir.path().to_str().unwrap().to_string();
+        let _env = EnvGuard::set(&[
+            ("PASSWORD_STORE_DIR", Some(home.as_str())),
+            ("HOME", Some(home.as_str())),
+            ("XDG_CONFIG_HOME", None),
+        ]);
+        let mut app = App::new().expect("app");
+
+        // Store directory absent: empty, and no error.
+        assert!(app.remotes().is_empty());
+
+        std::fs::create_dir_all(&app.store_path).expect("store dir");
+        // Capture the path in a local before the closure: borrowing
+        // app.store_path in the closure would hold an immutable borrow of
+        // app across the later resolve_remote_name() call (E0502).
+        let store_dir = app.store_path.clone();
+        let run = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(args)
+                .current_dir(&store_dir)
+                .output()
+                .expect("git");
+            assert!(
+                out.status.success(),
+                "git {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+
+        // A git-initialized store with no remote still lists none, and
+        // resolve_remote_name reports the configuration problem.
+        run(&["init"]);
+        run(&["config", "user.name", "Test"]);
+        run(&["config", "user.email", "test@example.com"]);
+        assert!(app.remotes().is_empty());
+        let err = app.resolve_remote_name().expect_err("no remotes must err");
+        assert!(
+            err.contains("no remote configured"),
+            "error must name the missing remote: {err}"
+        );
+
+        // Exactly one remote resolves to it without an upstream.
+        run(&["remote", "add", "fudge", "/tmp/mujo-test-remote"]);
+        assert_eq!(app.remotes(), vec!["fudge".to_string()]);
+        assert_eq!(app.resolve_remote_name().ok(), Some("fudge".to_string()));
+    }
+
+    /// With remotes present but none named "origin", apply_git_config_remote
+    /// must NOT conjure a third remote from config.toml's git.remote_url:
+    /// the resolver's "multiple remotes" ambiguity error should stand as a
+    /// prompt to act, not be silently resolved away.
+    #[test]
+    fn apply_git_config_remote_does_not_add_origin_when_remotes_exist() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let home = dir.path().to_str().unwrap().to_string();
+        let _env = EnvGuard::set(&[
+            ("PASSWORD_STORE_DIR", Some(home.as_str())),
+            ("HOME", Some(home.as_str())),
+            ("XDG_CONFIG_HOME", None),
+        ]);
+        let mut app = App::new().expect("app");
+
+        std::fs::create_dir_all(&app.store_path).expect("store dir");
+        // Capture the path in a local before the closure: borrowing
+        // app.store_path in the closure would hold an immutable borrow of
+        // app across the later resolve_remote_name() call (E0502).
+        let store_dir = app.store_path.clone();
+        let run = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(args)
+                .current_dir(&store_dir)
+                .output()
+                .expect("git");
+            assert!(
+                out.status.success(),
+                "git {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+
+        run(&["init"]);
+        run(&["config", "user.name", "Test"]);
+        run(&["config", "user.email", "test@example.com"]);
+        run(&["remote", "add", "fudge2", "/tmp/mujo-test-remote-a"]);
+        run(&["remote", "add", "second", "/tmp/mujo-test-remote-b"]);
+
+        app.config.git.remote_url = "/tmp/mujo-test-remote-config".to_string();
+        app.apply_git_config_remote();
+
+        let mut remotes = app.remotes();
+        remotes.sort();
+        assert_eq!(
+            remotes,
+            vec!["fudge2".to_string(), "second".to_string()],
+            "no third remote may be conjured from config.toml"
+        );
+        let err = app
+            .resolve_remote_name()
+            .expect_err("ambiguity must still err");
+        assert!(
+            err.contains("multiple remotes"),
+            "error must report the ambiguity: {err}"
+        );
+    }
+
+    /// With no remotes at all (e.g. .git was recreated),
+    /// apply_git_config_remote auto-configures "origin" from config.toml's
+    /// git.remote_url, after which resolve_remote_name resolves to it.
+    #[test]
+    fn apply_git_config_remote_adds_origin_when_no_remotes() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let home = dir.path().to_str().unwrap().to_string();
+        let _env = EnvGuard::set(&[
+            ("PASSWORD_STORE_DIR", Some(home.as_str())),
+            ("HOME", Some(home.as_str())),
+            ("XDG_CONFIG_HOME", None),
+        ]);
+        let mut app = App::new().expect("app");
+
+        std::fs::create_dir_all(&app.store_path).expect("store dir");
+        let store_dir = app.store_path.clone();
+        let run = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(args)
+                .current_dir(&store_dir)
+                .output()
+                .expect("git");
+            assert!(
+                out.status.success(),
+                "git {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+
+        run(&["init"]);
+        run(&["config", "user.name", "Test"]);
+        run(&["config", "user.email", "test@example.com"]);
+
+        let url = "/tmp/mujo-test-remote-config".to_string();
+        app.config.git.remote_url = url.clone();
+        app.apply_git_config_remote();
+
+        assert_eq!(app.remotes(), vec!["origin".to_string()]);
+        assert_eq!(app.resolve_remote_name().ok(), Some("origin".to_string()));
+        // The remote git ended up with points at config.toml's URL.
+        assert_eq!(
+            app.git_cmd(&["remote", "get-url", "origin"]).ok(),
+            Some(url)
+        );
+    }
+
+    #[test]
+    fn git_cmd_without_tui_leaves_needs_clear_false() {
+        let mut app = temp_app(false);
+        assert!(!app.tui_active, "tui_active must default to false");
+
+        // "push" is an interactive subcommand, but with tui_active false
+        // git_cmd must take the plain captured path and never hand over
+        // the terminal.
+        let _ = app.git_cmd(&["push"]);
+        assert!(!app.needs_clear);
+    }
+
+    #[test]
+    fn git_cmd_with_tui_sets_needs_clear_for_interactive() {
+        let mut app = temp_app(true);
+        let _ = app.git_cmd(&["push"]);
+        assert!(app.needs_clear);
+    }
+
+    #[test]
+    fn git_cmd_with_tui_non_interactive_leaves_needs_clear_false() {
+        let mut app = temp_app(true);
+        let _ = app.git_cmd(&["status"]);
+        assert!(!app.needs_clear);
+    }
+
+    #[test]
+    fn handover_flag_set_for_gpg_prompting_pass_commands() {
+        // insert/generate/rm/init and a user-initiated show all funnel
+        // through with_terminal_handover with interactive=true: the flag
+        // must be recorded even under cfg!(test), where the raw terminal
+        // I/O is skipped.
+        let mut app = temp_app(true);
+        let _ = app.with_terminal_handover(true, None, || Ok::<(), anyhow::Error>(()));
+        assert!(app.needs_clear);
+    }
+
+    #[test]
+    fn handover_flag_not_set_for_preview_show() {
+        let mut app = temp_app(true);
+        let _ = app.with_terminal_handover(false, None, || Ok::<(), anyhow::Error>(()));
+        assert!(!app.needs_clear);
+    }
+
+    #[test]
+    fn handover_requires_tui_active() {
+        let mut app = temp_app(false);
+        let _ = app.with_terminal_handover(true, None, || Ok::<(), anyhow::Error>(()));
+        assert!(!app.needs_clear);
+    }
+
+    #[test]
+    fn alt_repair_sets_needs_clear_for_interactive_with_tui() {
+        let mut app = temp_app(true);
+        let _ = app.with_alt_repair(true, || Ok::<(), anyhow::Error>(()));
+        assert!(app.needs_clear);
+    }
+
+    #[test]
+    fn alt_repair_requires_tui_active() {
+        let mut app = temp_app(false);
+        let _ = app.with_alt_repair(true, || Ok::<(), anyhow::Error>(()));
+        assert!(!app.needs_clear);
+    }
+
+    #[test]
+    fn alt_repair_requires_interactive() {
+        let mut app = temp_app(true);
+        let _ = app.with_alt_repair(false, || Ok::<(), anyhow::Error>(()));
+        assert!(!app.needs_clear);
+    }
+
+    /// The fallback Sync line names the resolved remote, so a local-path
+    /// URL (or several remotes) still says which remote was used.
+    #[test]
+    fn sync_fallback_line_names_remote() {
+        let line = App::sync_fallback_line("Pushed to", "origin", "/home/me/pass-store.git");
+        assert_eq!(line, "Pushed to origin (/home/me/pass-store.git)");
+        assert!(line.contains("origin"));
+    }
+
+    /// Blocked-sync Sync lines carry the short reason (the half-pane line
+    /// would otherwise truncate the full fix-it text).
+    #[test]
+    fn blocked_sync_reason_is_shortened() {
+        assert_eq!(
+            App::short_sync_reason(
+                "no remote configured - git remote add <name> <url> (or set git.remote_url in config.toml)"
+            ),
+            "no remote"
+        );
+        assert_eq!(
+            App::short_sync_reason(
+                "multiple remotes and no upstream - set one with git branch -u <remote>/<branch>"
+            ),
+            "multiple remotes"
+        );
+    }
+
+    /// The reflog-derived fallback label: "last remote update <relative>"
+    /// through the shared relative-time formatter, "(unknown)" when the
+    /// reflog gave no parsable timestamp.
+    #[test]
+    fn remote_update_label_formats_reflog_timestamp() {
+        let now = SystemTime::now();
+        let ts = now
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock after epoch")
+            .as_secs()
+            - 90;
+        let label = App::format_remote_update_label(Some(ts), now);
+        assert!(
+            label.starts_with("last remote update "),
+            "label must name the reflog source: {label}"
+        );
+        assert!(label.ends_with("1 min ago"), "{label}");
+        assert_eq!(App::format_remote_update_label(None, now), "(unknown)");
+    }
+}
