@@ -477,6 +477,7 @@ mod tests {
             git_scroll: 0,
             git_h_scroll: 0,
             help_scroll_offset: 0,
+            help_body_height: 0,
             help_return_mode: AppMode::Normal,
             entry_to_delete: None,
             pending_pull: false,

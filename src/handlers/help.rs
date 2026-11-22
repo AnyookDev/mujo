@@ -49,11 +49,18 @@ pub fn maybe_open_help(app: &mut App, key: &KeyEvent) -> bool {
     false
 }
 
+/// How far one page step moves: the visible body height less one line, so
+/// a line of context carries over between pages. At least one line, so
+/// paging still moves before the first draw has recorded a height.
+fn help_page(app: &App) -> usize {
+    app.help_body_height.saturating_sub(1).max(1)
+}
+
 /// Full-screen help view: lists every binding grouped by pane. Esc, q, ?
 /// and Ctrl+/ all close it and return to the mode help was opened from
-/// (help_return_mode), NOT a hardcoded Normal; Up/Down and k/j scroll the
-/// body by one line, Shift+arrows and PgUp/PgDn by page, reusing the Git
-/// pane's scroll keys.
+/// (help_return_mode), NOT a hardcoded Normal. Up/Down and k/j scroll one
+/// line. Shift+Up/Down scrolls HELP_V_STEP lines. PgUp/PgDn (and b/Space)
+/// scroll a page, the visible body height.
 pub fn handle_help_mode(app: &mut App, key: KeyEvent) -> Result<()> {
     match key.code {
         KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') => {
@@ -98,12 +105,12 @@ pub fn handle_help_mode(app: &mut App, key: KeyEvent) -> Result<()> {
         KeyCode::PageUp | KeyCode::Char('b')
             if accepts(Action::PageUp, key.code, key.modifiers) =>
         {
-            app.help_scroll_offset = app.help_scroll_offset.saturating_sub(HELP_V_STEP);
+            app.help_scroll_offset = app.help_scroll_offset.saturating_sub(help_page(app));
         }
         KeyCode::PageDown | KeyCode::Char(' ')
             if accepts(Action::PageDown, key.code, key.modifiers) =>
         {
-            app.help_scroll_offset += HELP_V_STEP;
+            app.help_scroll_offset += help_page(app);
         }
         KeyCode::Home | KeyCode::Char('g') if accepts(Action::Top, key.code, key.modifiers) => {
             app.help_scroll_offset = 0;
@@ -115,4 +122,59 @@ pub fn handle_help_mode(app: &mut App, key: KeyEvent) -> Result<()> {
         _ => {}
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::handlers::normal::tests::app_with_entries;
+    use crossterm::event::{KeyEventKind, KeyEventState};
+
+    fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    fn help_app(body_height: usize) -> App {
+        let mut app = app_with_entries(&["alice"]);
+        app.mode = AppMode::Help;
+        app.help_body_height = body_height;
+        app
+    }
+
+    #[test]
+    fn page_down_and_up_move_by_body_height_less_one() {
+        let mut app = help_app(20);
+        handle_help_mode(&mut app, key(KeyCode::PageDown, KeyModifiers::NONE)).unwrap();
+        assert_eq!(app.help_scroll_offset, 19);
+        handle_help_mode(&mut app, key(KeyCode::PageUp, KeyModifiers::NONE)).unwrap();
+        assert_eq!(app.help_scroll_offset, 0);
+    }
+
+    #[test]
+    fn space_and_b_page_like_pgdn_and_pgup() {
+        let mut app = help_app(10);
+        handle_help_mode(&mut app, key(KeyCode::Char(' '), KeyModifiers::NONE)).unwrap();
+        assert_eq!(app.help_scroll_offset, 9);
+        handle_help_mode(&mut app, key(KeyCode::Char('b'), KeyModifiers::NONE)).unwrap();
+        assert_eq!(app.help_scroll_offset, 0);
+    }
+
+    #[test]
+    fn shift_arrows_still_move_by_three_lines() {
+        let mut app = help_app(20);
+        handle_help_mode(&mut app, key(KeyCode::Down, KeyModifiers::SHIFT)).unwrap();
+        assert_eq!(app.help_scroll_offset, HELP_V_STEP);
+    }
+
+    #[test]
+    fn page_step_is_at_least_one_line_before_first_draw() {
+        let mut app = help_app(0);
+        handle_help_mode(&mut app, key(KeyCode::PageDown, KeyModifiers::NONE)).unwrap();
+        assert_eq!(app.help_scroll_offset, 1);
+    }
 }

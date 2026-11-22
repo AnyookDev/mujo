@@ -397,7 +397,7 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::app::{App, JUMP_TIMEOUT};
     use crate::config::Config;
@@ -427,7 +427,7 @@ mod tests {
         fake_key(KeyCode::Esc, KeyModifiers::NONE)
     }
 
-    fn app_with_entries(names: &[&str]) -> App {
+    pub(crate) fn app_with_entries(names: &[&str]) -> App {
         let root = PathBuf::from("/store");
         let entries: Vec<PassEntry> = names
             .iter()
@@ -475,6 +475,7 @@ mod tests {
             git_scroll: 0,
             git_h_scroll: 0,
             help_scroll_offset: 0,
+            help_body_height: 0,
             help_return_mode: AppMode::Normal,
             entry_to_delete: None,
             pending_pull: false,

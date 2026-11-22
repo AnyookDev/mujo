@@ -77,6 +77,9 @@ pub struct App {
     /// separate from preview_scroll_offset so closing help leaves the
     /// preview's scroll position intact.
     pub help_scroll_offset: usize,
+    /// Visible body height of the help view, recorded by draw_help on each
+    /// frame so PgUp/PgDn can scroll by a page. 0 until the first draw.
+    pub help_body_height: usize,
     /// Mode to restore when the help view closes. Recorded by
     /// handlers::open_help, so help can be opened from (and return to)
     /// any mode - from the Editor that lands back in the editor with the
@@ -170,6 +173,7 @@ impl App {
             git_scroll: 0,
             git_h_scroll: 0,
             help_scroll_offset: 0,
+            help_body_height: 0,
             help_return_mode: AppMode::Normal,
             entry_to_delete: None,
             pending_pull: false,
