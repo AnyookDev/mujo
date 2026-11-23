@@ -110,8 +110,8 @@ Reload with `tmux source-file ~/.tmux.conf` and then detach and reattach for
 **Clipboard auto-clear over SSH is best effort, and depends on your terminal.**
 When the timeout fires, mujo sends an OSC 52 overwrite (a single space) to your
 terminal. mujo cannot confirm that the terminal applied it. In testing over plain
-SSH, the terminals behaved differently. The results were the same with and
-without tmux (`set-clipboard on` and `focus-events on`):
+SSH, the terminals behaved differently. With a Linux mujo host, the results were
+the same with and without tmux (`set-clipboard on` and `focus-events on`):
 
 | Terminal | Copy works | Unfocused, past timeout | After refocusing mujo |
 | --- | --- | --- | --- |
@@ -121,6 +121,18 @@ without tmux (`set-clipboard on` and `focus-events on`):
 | gnome-terminal | no | clipboard unchanged | clipboard unchanged |
 | konsole | no | clipboard unchanged | clipboard unchanged |
 | xterm | no | clipboard unchanged | clipboard unchanged |
+
+With a macOS mujo host (a VM, reached over SSH), the results were also the same
+with and without tmux. The timeout behaviour was not recorded for the first two
+rows:
+
+| Terminal | Copy works | Result |
+| --- | --- | --- |
+| alacritty | yes | clipboard clears on refocus (becomes a space) |
+| cosmic-term | yes | clipboard clears on refocus (becomes a space) |
+| kitty | yes | cleared when unfocused, then a space on refocus |
+| konsole | no | no copy |
+| xterm | no | no copy |
 
 Where copy does not work, the terminal ignores OSC 52 clipboard writes. mujo has
 no way to detect this, so it still reports "sent to terminal clipboard". Use
