@@ -124,17 +124,16 @@ the same with and without tmux (`set-clipboard on` and `focus-events on`):
 | foot | yes | copy still pasteable | becomes a space |
 
 With a macOS mujo host (a VM, reached over SSH), the results were also the same
-with and without tmux. The timeout behaviour was not recorded for the first two
-rows:
+with and without tmux:
 
-| Terminal | Copy works | Result |
-| --- | --- | --- |
-| alacritty | yes | clipboard clears on refocus (becomes a space) |
-| cosmic-term | yes | clipboard clears on refocus (becomes a space) |
-| kitty | yes | cleared when unfocused, then a space on refocus |
-| konsole | no | no copy |
-| xterm | no | no copy |
-| foot | yes | cleared on refocus (becomes a space) |
+| Terminal | Copy works | Unfocused, past timeout | After refocusing mujo |
+| --- | --- | --- | --- |
+| alacritty | yes | copy still pasteable | becomes a space |
+| cosmic-term | yes | copy still pasteable | becomes a space |
+| kitty | yes | copy cleared | becomes a space |
+| foot | yes | copy still pasteable | becomes a space |
+| konsole | no | clipboard unchanged | clipboard unchanged |
+| xterm | no | clipboard unchanged | clipboard unchanged |
 
 Where copy does not work, the terminal ignores OSC 52 clipboard writes. mujo has
 no way to detect this, so it still reports "sent to terminal clipboard". Use
