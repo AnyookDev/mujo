@@ -112,15 +112,20 @@ When the timeout fires, mujo sends an OSC 52 overwrite (a single space) to your
 terminal. mujo cannot confirm that the terminal applied it. In testing over plain
 SSH (no tmux), the terminals behaved differently:
 
-| Terminal | Unfocused, past timeout | After refocusing mujo |
-| --- | --- | --- |
-| cosmic-term | copy still pasteable | becomes a space |
-| gnome-terminal | copy still pasteable | becomes a space |
-| kitty | copy cleared | becomes a space |
+| Terminal | Copy works | Unfocused, past timeout | After refocusing mujo |
+| --- | --- | --- | --- |
+| cosmic-term | yes | copy still pasteable | becomes a space |
+| kitty | yes | copy cleared | becomes a space |
+| gnome-terminal | no | clipboard unchanged | clipboard unchanged |
+
+gnome-terminal (VTE) does not support OSC 52 clipboard writes. The copy and
+clear sequences are accepted by the terminal but ignored; mujo has no way to
+detect this and reports "sent to terminal clipboard" regardless.
 
 If mujo is unfocused when the timer fires, it re-sends the overwrite when you
 return. To limit exposure, copy only when you are about to paste, and do not rely
-on the auto-clear while mujo is in the background.
+on the auto-clear while mujo is in the background. For gnome-terminal over SSH,
+clipboard integration is not available.
 
 Also export a tty for gpg. mujo does this for its own children, so mujo works
 without it — it matters for `pass` and `gpg` run straight from the shell, where
