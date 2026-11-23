@@ -118,6 +118,14 @@ SSH (no tmux), the terminals behaved differently:
 | kitty | yes | copy cleared | becomes a space |
 | gnome-terminal | no | clipboard unchanged | clipboard unchanged |
 
+With tmux (`set-clipboard on` and `focus-events on`), the same terminals gave:
+
+| Terminal | Copy works | Unfocused, past timeout | After refocusing mujo |
+| --- | --- | --- | --- |
+| cosmic-term | yes | copy still pasteable | becomes a space |
+| kitty | yes | copy cleared | becomes a space |
+| gnome-terminal | no | clipboard unchanged | clipboard unchanged |
+
 gnome-terminal (VTE) does not support OSC 52 clipboard writes. The copy and
 clear sequences are accepted by the terminal but ignored; mujo has no way to
 detect this and reports "sent to terminal clipboard" regardless.
