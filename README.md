@@ -107,13 +107,15 @@ were away (without it, the auto-clear only works while mujo is focused).
 Reload with `tmux source-file ~/.tmux.conf` and then detach and reattach for
 `focus-events` to take effect.
 
-**Clipboard auto-clear over SSH is best effort.** When the timeout fires, mujo
-sends an OSC 52 overwrite (a single space) to your terminal. The terminal has to
-apply it, and mujo cannot confirm that it did. If mujo is in the background when
-the timer fires, the overwrite is re-sent when you return to it, so a copied
-secret can stay pasteable until then. To limit exposure, copy only when you are
-about to paste, and return to mujo to confirm "Clipboard overwritten" before you
-walk away.
+**Clipboard auto-clear over SSH is best effort, and depends on your terminal.**
+When the timeout fires, mujo sends an OSC 52 overwrite (a single space) to your
+terminal. mujo cannot confirm that the terminal applied it. Terminals differ in
+what they do with that write while mujo is in the background: in testing, one
+applied it while mujo was unfocused, and another kept the copied secret
+pasteable until mujo was focused again. If mujo is unfocused when the timer
+fires, it re-sends the overwrite when you return. To limit exposure, copy only
+when you are about to paste, and do not rely on the auto-clear while mujo is in
+the background.
 
 Also export a tty for gpg. mujo does this for its own children, so mujo works
 without it — it matters for `pass` and `gpg` run straight from the shell, where

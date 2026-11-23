@@ -120,6 +120,9 @@ impl App {
         match tool {
             Some(tool) => {
                 self.clipboard_tool = Some(tool);
+                // A new copy supersedes any clear that is waiting for focus.
+                // Otherwise returning to mujo would overwrite the fresh secret.
+                self.osc52_clear_pending_refocus = false;
                 self.message = Some((self.copy_success_message("Text"), Instant::now()));
                 self.security_clear_at = self.clipboard_timeout().map(|d| Instant::now() + d);
                 true
@@ -364,5 +367,20 @@ mod clear_tests {
     fn osc52_clear_is_not_empty() {
         assert!(!OSC52_CLEAR_TEXT.is_empty());
         assert_eq!(OSC52_CLEAR_TEXT, " ");
+    }
+}
+
+#[cfg(test)]
+mod pending_tests {
+    use crate::handlers::app_with_entries;
+
+    /// A copy after a pending focus-return clear must drop the stale flag,
+    /// so returning to mujo does not overwrite the new secret.
+    #[test]
+    fn new_copy_clears_pending_refocus_flag() {
+        let mut app = app_with_entries(&["alice"]);
+        app.osc52_clear_pending_refocus = true;
+        assert!(app.copy_to_clipboard("fresh-secret"));
+        assert!(!app.osc52_clear_pending_refocus);
     }
 }
