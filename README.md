@@ -121,7 +121,7 @@ the same with and without tmux (`set-clipboard on` and `focus-events on`):
 | gnome-terminal | no | clipboard unchanged | clipboard unchanged |
 | konsole | no | clipboard unchanged | clipboard unchanged |
 | xterm | no | clipboard unchanged | clipboard unchanged |
-| foot | yes | not recorded | cleared, then a space on refocus |
+| foot | yes | copy still pasteable | becomes a space |
 
 With a macOS mujo host (a VM, reached over SSH), the results were also the same
 with and without tmux. The timeout behaviour was not recorded for the first two
