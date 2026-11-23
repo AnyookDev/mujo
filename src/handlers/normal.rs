@@ -233,13 +233,7 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
 
             if let Some(password) = password_to_copy {
                 if app.copy_to_clipboard(&password) {
-                    // Keep the "(Ns)" hint in sync with the configured timeout;
-                    // when auto-clear is disabled no countdown is shown.
-                    let msg = match app.clipboard_timeout() {
-                        Some(d) => format!("Password copied to clipboard ({}s)", d.as_secs()),
-                        None => "Password copied to clipboard".to_string(),
-                    };
-                    app.message = Some((msg, Instant::now()));
+                    app.message = Some((app.copy_success_message("Password"), Instant::now()));
                 }
             }
         }
@@ -252,13 +246,8 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
                 match content.username.clone() {
                     Some(username) => {
                         if app.copy_to_clipboard(&username) {
-                            let msg = match app.clipboard_timeout() {
-                                Some(d) => {
-                                    format!("Username copied to clipboard ({}s)", d.as_secs())
-                                }
-                                None => "Username copied to clipboard".to_string(),
-                            };
-                            app.message = Some((msg, Instant::now()));
+                            app.message =
+                                Some((app.copy_success_message("Username"), Instant::now()));
                         }
                     }
                     // No fallback to the password: say so and copy nothing.
@@ -280,13 +269,8 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
                     Some(totp) => {
                         let code = totp.generate();
                         if app.copy_to_clipboard(&code) {
-                            let msg = match app.clipboard_timeout() {
-                                Some(d) => {
-                                    format!("TOTP code copied to clipboard ({}s)", d.as_secs())
-                                }
-                                None => "TOTP code copied to clipboard".to_string(),
-                            };
-                            app.message = Some((msg, Instant::now()));
+                            app.message =
+                                Some((app.copy_success_message("TOTP code"), Instant::now()));
                         }
                     }
                     None => {
@@ -490,6 +474,7 @@ pub(crate) mod tests {
             last_reload: now,
             security_clear_at: None,
             clipboard_tool: None,
+            osc52_clear_pending_refocus: false,
             last_click: None,
             context_menu: None,
             move_source: None,

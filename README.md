@@ -93,6 +93,28 @@ exported in the shell. A graphical one opens a window; on macOS `pinentry-mac`
 needs a GUI session, so over ssh the window appears on the remote desktop.
 `mujo --diagnose` reports which pinentry is effective.
 
+**Copying over SSH** sends the text as an OSC 52 escape, so it lands on the
+clipboard of the machine you're sitting at. Most terminals accept this by
+default. Inside tmux, two settings are needed in `~/.tmux.conf`:
+
+    set -g set-clipboard on
+    set -g focus-events on
+
+`set-clipboard on` tells tmux to forward clipboard writes from panes to your
+terminal; the default `external` does not. `focus-events on` lets mujo detect
+when you switch back to it and re-send any clipboard clear that fired while you
+were away (without it, the auto-clear only works while mujo is focused).
+Reload with `tmux source-file ~/.tmux.conf` and then detach and reattach for
+`focus-events` to take effect.
+
+**Clipboard auto-clear over SSH is best effort.** When the timeout fires, mujo
+sends an OSC 52 overwrite (a single space) to your terminal. The terminal has to
+apply it, and mujo cannot confirm that it did. If mujo is in the background when
+the timer fires, the overwrite is re-sent when you return to it, so a copied
+secret can stay pasteable until then. To limit exposure, copy only when you are
+about to paste, and return to mujo to confirm "Clipboard overwritten" before you
+walk away.
+
 Also export a tty for gpg. mujo does this for its own children, so mujo works
 without it — it matters for `pass` and `gpg` run straight from the shell, where
 stdin is often a pipe and a terminal pinentry then has no tty to draw on.
@@ -270,6 +292,7 @@ Press `?` or `Ctrl+/` in the app for the full list, grouped by mode.
 | `pass` prompts but mujo doesn't | different terminal | run mujo in the terminal you tested `pass` in |
 | folders are missing after cloning the store | git does not track empty directories; mujo writes a `.gitkeep` when it creates a folder (and during `pass git init`) so folders survive a clone | the source store predates that — commit `.gitkeep` files there, push, and re-clone |
 | `mujo` not found after `install` | `~/.local/bin` not on `PATH` | add it to your shell rc |
+| `c`, `t` or `u` says copied over SSH, but nothing pastes | inside tmux, `set-clipboard` is `external` (the default), so tmux drops the copy; or the terminal doesn't accept OSC 52 | in `~/.tmux.conf`, `set -g set-clipboard on` and `set -g focus-events on`, then reload tmux and detach/reattach |
 | icons show as empty boxes | `glyphs` is set to `nerd` but the terminal isn't using a Nerd Font — or you are over SSH and the remote has none | see [Fonts](#fonts); check `mujo --diagnose` |
 
 ## Licence

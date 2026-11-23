@@ -45,7 +45,7 @@ pub enum GitPaneState {
     Ready,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ClipboardTool {
     WlCopy,
     Pbcopy,

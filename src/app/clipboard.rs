@@ -63,6 +63,17 @@ fn run_copy_tool(program: &str, args: &[&str], stdin_text: Option<&str>) -> bool
     child.wait().map(|status| status.success()).unwrap_or(false)
 }
 
+/// What an OSC 52 clear writes. A space, not an empty string: tmux drops an
+/// empty clipboard write, so the copied secret would survive the clear.
+const OSC52_CLEAR_TEXT: &str = " ";
+
+/// Re-send the OSC 52 clear on focus regain. Only called from
+/// App::on_focus_gained; not compiled in test builds.
+#[cfg(not(test))]
+pub(super) fn osc52_send_clear() {
+    let _ = osc52_copy(OSC52_CLEAR_TEXT);
+}
+
 /// Write an OSC 52 "set clipboard" sequence to the controlling terminal.
 /// Writes to /dev/tty rather than stdout, because stdout belongs to the
 /// TUI's backend. Returns true when the sequence was written.
@@ -92,15 +103,8 @@ impl App {
 
         if let Some((text, is_password)) = to_copy {
             if self.copy_to_clipboard(&text) {
-                // Keep the "(Ns)" hint in sync with the configured timeout; when
-                // auto-clear is disabled no countdown is shown.
-                let msg = match (is_password, self.clipboard_timeout()) {
-                    (true, Some(d)) => format!("Password copied to clipboard ({}s)", d.as_secs()),
-                    (false, Some(d)) => format!("Line copied to clipboard ({}s)", d.as_secs()),
-                    (true, None) => "Password copied to clipboard".to_string(),
-                    (false, None) => "Line copied to clipboard".to_string(),
-                };
-                self.message = Some((msg, Instant::now()));
+                let what = if is_password { "Password" } else { "Line" };
+                self.message = Some((self.copy_success_message(what), Instant::now()));
             }
         }
     }
@@ -116,7 +120,7 @@ impl App {
         match tool {
             Some(tool) => {
                 self.clipboard_tool = Some(tool);
-                self.message = Some(("Copied to clipboard!".to_string(), Instant::now()));
+                self.message = Some((self.copy_success_message("Text"), Instant::now()));
                 self.security_clear_at = self.clipboard_timeout().map(|d| Instant::now() + d);
                 true
             }
@@ -124,6 +128,22 @@ impl App {
                 self.message = Some(("Failed to copy to clipboard".to_string(), Instant::now()));
                 false
             }
+        }
+    }
+
+    /// The success message for a copy of `what` (for example "Password").
+    /// Over OSC 52 mujo can only confirm it wrote the sequence to the
+    /// terminal, not that the terminal applied it, so the wording says that.
+    /// Local tools confirm the copy themselves, so they keep "copied".
+    pub fn copy_success_message(&self, what: &str) -> String {
+        let verb = if self.clipboard_tool == Some(ClipboardTool::Osc52) {
+            "sent to terminal clipboard"
+        } else {
+            "copied to clipboard"
+        };
+        match self.clipboard_timeout() {
+            Some(d) => format!("{what} {verb} ({}s)", d.as_secs()),
+            None => format!("{what} {verb}"),
         }
     }
 
@@ -233,10 +253,11 @@ impl App {
                     .stderr(Stdio::null())
                     .spawn();
             }
-            // Clearing the clipboard over OSC 52 means writing an empty
-            // payload. Only effective if the terminal honours the write.
+            // Over OSC 52, clear by overwriting with a single space. An
+            // empty payload is dropped by tmux, so the copied secret would
+            // stay on the local clipboard.
             Some(ClipboardTool::Osc52) => {
-                let _ = osc52_copy("");
+                let _ = osc52_copy(OSC52_CLEAR_TEXT);
             }
             None => {}
         }
@@ -284,6 +305,64 @@ mod tests {
     /// A missing program counts as failure.
     #[test]
     fn copy_tool_missing_program_is_failure() {
-        assert!(!run_copy_tool("mujo-no-such-clipboard-tool", &[], Some("x")));
+        assert!(!run_copy_tool(
+            "mujo-no-such-clipboard-tool",
+            &[],
+            Some("x")
+        ));
+    }
+}
+
+#[cfg(test)]
+mod message_tests {
+    use crate::handlers::app_with_entries;
+    use crate::models::ClipboardTool;
+
+    #[test]
+    fn local_tool_message_says_copied() {
+        let mut app = app_with_entries(&["alice"]);
+        app.clipboard_tool = Some(ClipboardTool::WlCopy);
+        app.config.clipboard.timeout_seconds = 0;
+        assert_eq!(
+            app.copy_success_message("Password"),
+            "Password copied to clipboard"
+        );
+    }
+
+    /// OSC 52 cannot confirm the terminal applied the copy, so the message
+    /// must not claim it was copied.
+    #[test]
+    fn osc52_message_says_sent_to_terminal() {
+        let mut app = app_with_entries(&["alice"]);
+        app.clipboard_tool = Some(ClipboardTool::Osc52);
+        app.config.clipboard.timeout_seconds = 0;
+        assert_eq!(
+            app.copy_success_message("Password"),
+            "Password sent to terminal clipboard"
+        );
+    }
+
+    #[test]
+    fn timeout_hint_is_kept() {
+        let mut app = app_with_entries(&["alice"]);
+        app.clipboard_tool = Some(ClipboardTool::Osc52);
+        app.config.clipboard.timeout_seconds = 45;
+        assert_eq!(
+            app.copy_success_message("TOTP code"),
+            "TOTP code sent to terminal clipboard (45s)"
+        );
+    }
+}
+
+#[cfg(test)]
+mod clear_tests {
+    use super::OSC52_CLEAR_TEXT;
+
+    /// tmux drops an empty OSC 52 write, so the clear must send something
+    /// non-empty that overwrites the copied secret.
+    #[test]
+    fn osc52_clear_is_not_empty() {
+        assert!(!OSC52_CLEAR_TEXT.is_empty());
+        assert_eq!(OSC52_CLEAR_TEXT, " ");
     }
 }

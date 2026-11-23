@@ -340,6 +340,7 @@ mod tests {
             last_reload: now,
             security_clear_at: None,
             clipboard_tool: None,
+            osc52_clear_pending_refocus: false,
             last_click: None,
             context_menu: None,
             move_source: None,

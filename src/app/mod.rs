@@ -99,6 +99,10 @@ pub struct App {
     pub last_reload: Instant,
     pub security_clear_at: Option<Instant>,
     pub clipboard_tool: Option<ClipboardTool>,
+    /// Set to true when the auto-clear timer fires while mujo is unfocused
+    /// (i.e. the OSC 52 overwrite was sent but may have been dropped by the
+    /// terminal). Cleared once a FocusGained event triggers a re-send.
+    pub osc52_clear_pending_refocus: bool,
     pub last_click: Option<(Instant, (u16, u16), u8)>,
     pub context_menu: Option<ContextMenu>,
     pub move_source: Option<String>,
@@ -181,6 +185,7 @@ impl App {
             last_reload: Instant::now(),
             security_clear_at: None,
             clipboard_tool: None,
+            osc52_clear_pending_refocus: false,
             last_click: None,
             context_menu: None,
             move_source: None,
@@ -231,6 +236,25 @@ impl App {
         }
     }
 
+    /// Called when the terminal reports focus returning to mujo. If the
+    /// auto-clear timer fired while mujo was unfocused, re-sends the OSC 52
+    /// overwrite now that the terminal is likely to apply it.
+    pub fn on_focus_gained(&mut self) {
+        if self.osc52_clear_pending_refocus {
+            self.osc52_clear_pending_refocus = false;
+            // Re-send via the same path clear_clipboard uses, without
+            // resetting the timer state (already None by this point).
+            #[cfg(not(test))]
+            {
+                use crate::app::clipboard::osc52_send_clear;
+                osc52_send_clear();
+            }
+            // Show the message on focus return: the user was away when the
+            // timer fired so this is the first confirmation they see.
+            self.message = Some(("Clipboard overwritten".to_string(), Instant::now()));
+        }
+    }
+
     pub fn wipe_all_sensitive_data(&mut self) {
         self.clear_clipboard();
         self.clear_preview();
@@ -252,8 +276,17 @@ impl App {
 
         if let Some(clear_at) = self.security_clear_at {
             if now >= clear_at {
+                // Read the tool before clearing, since clearing resets it.
+                let over_osc52 = self.clipboard_tool == Some(ClipboardTool::Osc52);
                 self.clear_clipboard();
-                self.message = Some(("Clipboard cleared".to_string(), Instant::now()));
+                if over_osc52 {
+                    // The overwrite was sent; mark it pending so FocusGained
+                    // re-sends it in case mujo was unfocused when it fired.
+                    self.osc52_clear_pending_refocus = true;
+                    self.message = Some(("Clipboard overwritten".to_string(), Instant::now()));
+                } else {
+                    self.message = Some(("Clipboard cleared".to_string(), Instant::now()));
+                }
             }
         }
     }

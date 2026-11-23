@@ -6,6 +6,11 @@ mod new_store;
 mod normal;
 mod search;
 
+/// Test-only access to the shared App fixture, so modules outside handlers
+/// can build an App without copying the struct literal.
+#[cfg(test)]
+pub(crate) use normal::tests::app_with_entries;
+
 pub use dialogs::{
     handle_add_folder_mode, handle_confirm_delete, handle_confirm_discard, handle_confirm_save,
     handle_move_mode,

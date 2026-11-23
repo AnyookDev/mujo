@@ -74,6 +74,9 @@ pub fn run_app() -> anyhow::Result<()> {
                 Event::Mouse(mouse) => {
                     handle_mouse_event(&mut app, mouse, size)?;
                 }
+                Event::FocusGained => {
+                    app.on_focus_gained();
+                }
                 _ => {}
             }
         }

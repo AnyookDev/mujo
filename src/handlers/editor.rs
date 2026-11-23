@@ -244,13 +244,7 @@ pub fn handle_editor_mode(app: &mut App, key: KeyEvent) -> Result<()> {
 
     if let Some(text) = text_to_copy {
         if app.copy_to_clipboard(&text) {
-            // Keep the "(Ns)" hint in sync with the configured timeout; when
-            // auto-clear is disabled no countdown is shown.
-            let msg = match app.clipboard_timeout() {
-                Some(d) => format!("Selection copied to clipboard ({}s)", d.as_secs()),
-                None => "Selection copied to clipboard".to_string(),
-            };
-            app.message = Some((msg, Instant::now()));
+            app.message = Some((app.copy_success_message("Selection"), Instant::now()));
         }
     }
 
