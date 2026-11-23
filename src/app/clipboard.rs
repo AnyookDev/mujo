@@ -234,27 +234,18 @@ impl App {
                     .stderr(Stdio::null())
                     .spawn();
             }
+            // Feed the clear text straight to the tool. macOS /bin/sh treats
+            // `echo -n` as literal text, so a shell pipeline would paste "-n".
             Some(ClipboardTool::Pbcopy) => {
-                let _ = Command::new("sh")
-                    .arg("-c")
-                    .arg("echo -n | pbcopy")
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn();
+                run_copy_tool("pbcopy", &[], Some(OSC52_CLEAR_TEXT));
             }
             Some(ClipboardTool::Xclip) => {
-                let _ = Command::new("sh")
-                    .arg("-c")
-                    .arg("echo -n | xclip -selection clipboard")
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn();
-                let _ = Command::new("sh")
-                    .arg("-c")
-                    .arg("echo -n | xclip -selection primary")
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn();
+                run_copy_tool(
+                    "xclip",
+                    &["-selection", "clipboard"],
+                    Some(OSC52_CLEAR_TEXT),
+                );
+                run_copy_tool("xclip", &["-selection", "primary"], Some(OSC52_CLEAR_TEXT));
             }
             // Over OSC 52, clear by overwriting with a single space. An
             // empty payload is dropped by tmux, so the copied secret would
@@ -382,5 +373,20 @@ mod pending_tests {
         app.osc52_clear_pending_refocus = true;
         assert!(app.copy_to_clipboard("fresh-secret"));
         assert!(!app.osc52_clear_pending_refocus);
+    }
+}
+
+#[cfg(test)]
+mod pbcopy_clear_tests {
+    use super::{run_copy_tool, OSC52_CLEAR_TEXT};
+
+    /// The local clear must not go through a shell: macOS /bin/sh prints
+    /// `echo -n` literally, which would paste "-n" into the clipboard.
+    /// This checks the clear payload is passed as data, not as shell text.
+    #[test]
+    fn clear_payload_is_plain_text_not_shell() {
+        assert!(!OSC52_CLEAR_TEXT.contains("echo"));
+        assert!(!OSC52_CLEAR_TEXT.contains('-'));
+        assert!(run_copy_tool("true", &[], Some(OSC52_CLEAR_TEXT)));
     }
 }
