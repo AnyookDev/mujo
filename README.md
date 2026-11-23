@@ -126,14 +126,14 @@ With tmux (`set-clipboard on` and `focus-events on`), the same terminals gave:
 | kitty | yes | copy cleared | becomes a space |
 | gnome-terminal | no | clipboard unchanged | clipboard unchanged |
 
-gnome-terminal (VTE) does not support OSC 52 clipboard writes. The copy and
-clear sequences are accepted by the terminal but ignored; mujo has no way to
-detect this and reports "sent to terminal clipboard" regardless.
+gnome-terminal (VTE) does not support OSC 52 clipboard writes, so copying from
+mujo over SSH does not work in it. The sequences are ignored, and mujo has no way
+to detect this, so it still reports "sent to terminal clipboard". Use cosmic-term
+or kitty for SSH sessions that need copy.
 
 If mujo is unfocused when the timer fires, it re-sends the overwrite when you
 return. To limit exposure, copy only when you are about to paste, and do not rely
-on the auto-clear while mujo is in the background. For gnome-terminal over SSH,
-clipboard integration is not available.
+on the auto-clear while mujo is in the background.
 
 Also export a tty for gpg. mujo does this for its own children, so mujo works
 without it — it matters for `pass` and `gpg` run straight from the shell, where
