@@ -110,26 +110,21 @@ Reload with `tmux source-file ~/.tmux.conf` and then detach and reattach for
 **Clipboard auto-clear over SSH is best effort, and depends on your terminal.**
 When the timeout fires, mujo sends an OSC 52 overwrite (a single space) to your
 terminal. mujo cannot confirm that the terminal applied it. In testing over plain
-SSH (no tmux), the terminals behaved differently:
+SSH, the terminals behaved differently. The results were the same with and
+without tmux (`set-clipboard on` and `focus-events on`):
 
 | Terminal | Copy works | Unfocused, past timeout | After refocusing mujo |
 | --- | --- | --- | --- |
+| alacritty | yes | copy still pasteable | becomes a space |
 | cosmic-term | yes | copy still pasteable | becomes a space |
 | kitty | yes | copy cleared | becomes a space |
 | gnome-terminal | no | clipboard unchanged | clipboard unchanged |
+| konsole | no | clipboard unchanged | clipboard unchanged |
+| xterm | no | clipboard unchanged | clipboard unchanged |
 
-With tmux (`set-clipboard on` and `focus-events on`), the same terminals gave:
-
-| Terminal | Copy works | Unfocused, past timeout | After refocusing mujo |
-| --- | --- | --- | --- |
-| cosmic-term | yes | copy still pasteable | becomes a space |
-| kitty | yes | copy cleared | becomes a space |
-| gnome-terminal | no | clipboard unchanged | clipboard unchanged |
-
-gnome-terminal (VTE) does not support OSC 52 clipboard writes, so copying from
-mujo over SSH does not work in it. The sequences are ignored, and mujo has no way
-to detect this, so it still reports "sent to terminal clipboard". Use cosmic-term
-or kitty for SSH sessions that need copy.
+Where copy does not work, the terminal ignores OSC 52 clipboard writes. mujo has
+no way to detect this, so it still reports "sent to terminal clipboard". Use
+alacritty, cosmic-term or kitty for SSH sessions that need copy.
 
 If mujo is unfocused when the timer fires, it re-sends the overwrite when you
 return. To limit exposure, copy only when you are about to paste, and do not rely
