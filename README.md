@@ -2,8 +2,9 @@
 
 ![mujo](assets/screenshot.png)
 
-A terminal UI for `pass` and GPG. Tree navigation, entry preview, decrypted
-editing, QR codes for passwords, and git status/push/pull.
+A terminal UI for `pass`. Password tree navigation, entry preview, decrypted
+editing, quick copy-paste of passwords/usernames, password QR code generation,
+and git for backup and versioning of your password store.
 
 ## Quick start
 
@@ -28,37 +29,30 @@ Other distributions: see [Requirements](#requirements).
 
     # Linux (x86_64)
     curl -L -o mujo \
-      https://github.com/AnyookDev/mujo/releases/latest/download/mujo-v0.1.0-linux-x86_64
+      https://github.com/AnyookDev/mujo/releases/latest/download/mujo-linux-x86_64
     install -m755 mujo ~/.local/bin/
 
     # macOS (universal: Intel + Apple silicon)
     curl -L -o mujo \
-      https://github.com/AnyookDev/mujo/releases/latest/download/mujo-v0.1.0-macos-universal
+      https://github.com/AnyookDev/mujo/releases/latest/download/mujo-macos-universal
     install -m755 mujo /usr/local/bin/
     xattr -d com.apple.quarantine /usr/local/bin/mujo 2>/dev/null || true
 
-Check the asset name against the [latest release](https://github.com/AnyookDev/mujo/releases/latest)
-— it carries the version number. To build from source instead, see [Build](#build).
+To build from source instead, see [Build](#build).
 
 **4. Run it**
 
     mujo
 
-The store is the one `pass` uses: `$PASSWORD_STORE_DIR` if your shell sets it,
-otherwise `~/.password-store`. If there is no store there yet, mujo offers to
-create one on first run — press `y`, type the key id from step 2 and press
-Enter. It checks the key exists first, so a typo is correctable in place, then
-runs `pass init` and initialises the git repo for you.
-
-If you already have a store there, mujo just opens it.
-
-`$PASSWORD_STORE_DIR` is pass's own variable, for when your store lives
-somewhere non-standard; mujo only reads it.
+If you already have a store at `~/.password-store` (or `$PASSWORD_STORE_DIR` if
+your shell sets it), mujo opens it. Otherwise, mujo offers to create the store,
+prompts you for your key id from step 2 above, and then runs `pass init` to
+initialize the store for you.
 
 ## Requirements
 
 `pass` and `gpg`, plus a **pinentry** so gpg can prompt for your passphrase. You
-also need a GPG key and an initialised store (`pass init <key-id>`), and `git` if
+also need a GPG key and an initialized store (`pass init <key-id>`), and `git` if
 you want the git features.
 
 | Platform | Install |
@@ -207,18 +201,18 @@ A universal macOS binary and a Linux x86_64 binary are attached to each
 respect to Rust, so they need nothing beyond the runtime requirements above.
 
     # Linux
-    install -m755 mujo-v0.1.0-linux-x86_64 ~/.local/bin/mujo
+    install -m755 mujo-linux-x86_64 ~/.local/bin/mujo
 
     # macOS
-    install -m755 mujo-v0.1.0-macos-universal /usr/local/bin/mujo
+    install -m755 mujo-macos-universal /usr/local/bin/mujo
 
 `~/.local/bin` is on `PATH` by default on most Linux distributions; if it isn't,
 add it. On macOS, `/usr/local/bin` is on `PATH` for both bash and zsh.
 
 Verify before installing — the `.sha256` files are published alongside:
 
-    sha256sum -c mujo-v0.1.0-linux-x86_64.sha256        # Linux
-    shasum -a 256 -c mujo-v0.1.0-macos-universal.sha256 # macOS
+    sha256sum -c mujo-linux-x86_64.sha256        # Linux
+    shasum -a 256 -c mujo-macos-universal.sha256 # macOS
 
 These are checksums, not signatures — they catch a truncated download, not a
 tampered release.
@@ -256,18 +250,18 @@ The binary is `target/release/mujo`. `--locked` uses the committed `Cargo.lock`.
     rustup target add x86_64-apple-darwin aarch64-apple-darwin
     sh scripts/build-macos-universal.sh
 
-It writes `dist/mujo-v<version>-macos-universal` plus a `.sha256`, runs
+It writes `dist/mujo-macos-universal` plus a `.sha256`, runs
 `lipo -info` and `--version` as smoke tests, and ad-hoc signs the result, which
 arm64 requires.
 
 ## Configuration
 
 `~/.config/mujo/config.toml` is written on first run with every option already
-present but commented out — theme colours, glyphs, truecolor, keyboard layout.
+present but commented out — theme colors, glyphs, truecolor, keyboard layout.
 Uncomment the lines you want and edit them in place.
 
 Press `r` in mujo to reload. Changes take effect immediately, which is the easy
-way to tune colours — you can watch them land without restarting.
+way to tune colors — you can watch them land without restarting.
 
 `git.remote_url` is authoritative over the store's git remote URL: mujo rewrites
 the git remote from config on refresh, so an external `git remote set-url` is
@@ -290,7 +284,7 @@ The final byte must be uppercase — `\033[1;2a` is a different sequence that
 isn't parsed. Terminal.app already ships correct mappings for ⇧←/⇧→; use those
 as the template.
 
-Terminal.app also synthesises bold for block glyphs, so any half block drawn in
+Terminal.app also synthesizes bold for block glyphs, so any half block drawn in
 bold smears vertically. Not an issue in iTerm2, kitty or cosmic-terminal.
 
 **QR codes** need roughly one terminal row per module. A long password or a
@@ -323,6 +317,6 @@ Press `?` or `Ctrl+/` in the app for the full list, grouped by mode.
 | `c`, `t` or `u` says copied over SSH, but nothing pastes | inside tmux, `set-clipboard` is `external` (the default), so tmux drops the copy; or the terminal doesn't accept OSC 52 | in `~/.tmux.conf`, `set -g set-clipboard on` and `set -g focus-events on`, then reload tmux and detach/reattach |
 | icons show as empty boxes | `glyphs` is set to `nerd` but the terminal isn't using a Nerd Font — or you are over SSH and the remote has none | see [Fonts](#fonts); check `mujo --diagnose` |
 
-## Licence
+## License
 
 MIT

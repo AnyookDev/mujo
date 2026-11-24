@@ -10,7 +10,8 @@ fi
 cd "$(dirname "$0")/.."
 
 VERSION=$(sed -n 's/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -1)
-OUT="dist/mujo-v${VERSION}-macos-universal"
+OUT="dist/mujo-macos-universal"
+NAME=$(basename "$OUT")
 
 rustup target add x86_64-apple-darwin aarch64-apple-darwin
 
@@ -27,6 +28,10 @@ lipo -create -output "$OUT" \
 codesign --force --sign - "$OUT"
 
 lipo -info "$OUT"
-shasum -a 256 "$OUT" > "$OUT.sha256"
-echo "built $OUT"
+
+# The checksum file records the bare file name, so `shasum -a 256 -c` works
+# from whatever directory the download landed in.
+( cd dist && shasum -a 256 "$NAME" > "$NAME.sha256" )
+
+echo "built $OUT (v$VERSION)"
 "$OUT" --version
