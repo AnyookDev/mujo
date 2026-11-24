@@ -345,21 +345,92 @@ impl Config {
         colors
     }
 
-    /// Persist the current config values to config.toml (regenerating the
-    /// commented template). Used to keep e.g. the git remote URL in sync
-    /// with changes made in the TUI.
+    /// Persist the current config values to config.toml. When the file already
+    /// exists, it is edited in-place using toml_edit so user comments, ordering
+    /// and untracked keys are preserved. When the file does not exist, the full
+    /// commented template is written via save_to.
     pub fn save(&self) -> Result<()> {
-        // Always write to a user-writable path, never a system path, so an
-        // admin-provided config is never modified: the $MUJO_CONFIG
-        // override when set, otherwise the user config (XDG_CONFIG_HOME or
-        // ~/.config). When only a system config exists, this writes a NEW
-        // user config holding the merged values (this Config was loaded
-        // from the system file plus any in-memory changes).
+        // Always write to a user-writable path, never a system path.
         let path = match std::env::var_os("MUJO_CONFIG") {
             Some(raw) => PathBuf::from(raw),
             None => Self::user_config_path()?,
         };
-        self.save_to(&path)
+        if path.exists() {
+            self.update_in_place(&path)
+        } else {
+            self.save_to(&path)
+        }
+    }
+
+    /// Edit the config file at `path` in-place: parse it with toml_edit,
+    /// update all tracked fields to their current in-memory values, and
+    /// write the document back. Comments, ordering and untracked keys are
+    /// left exactly as the user wrote them.
+    fn update_in_place(&self, path: &Path) -> Result<()> {
+        use toml_edit::{value, DocumentMut};
+
+        let raw = std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read config at {:?}", path))?;
+
+        let mut doc: DocumentMut = raw
+            .parse()
+            .with_context(|| format!("Failed to parse config at {:?}", path))?;
+
+        // Helper: ensure a table exists and set a key to a string value.
+        macro_rules! set_str {
+            ($doc:expr, $section:expr, $key:expr, $val:expr) => {
+                $doc[$section][$key] = value($val.to_string());
+            };
+        }
+        // Helper: set a key to a non-string TOML value (bool, int, float).
+        macro_rules! set_val {
+            ($doc:expr, $section:expr, $key:expr, $val:expr) => {
+                $doc[$section][$key] = value($val);
+            };
+        }
+
+        set_val!(
+            doc,
+            "password_generation",
+            "default_length",
+            self.password_generation.default_length as i64
+        );
+        set_str!(
+            doc,
+            "password_generation",
+            "charset",
+            &self.password_generation.charset
+        );
+        set_str!(
+            doc,
+            "password_generation",
+            "custom_charset",
+            &self.password_generation.custom_charset
+        );
+        set_val!(
+            doc,
+            "clipboard",
+            "timeout_seconds",
+            self.clipboard.timeout_seconds as i64
+        );
+        set_str!(doc, "colors", "theme", &self.colors.theme);
+        set_val!(doc, "colors", "transparent", self.colors.transparent);
+        set_str!(doc, "display", "glyphs", &self.display.glyphs);
+        set_str!(doc, "display", "truecolor", &self.display.truecolor);
+        set_str!(doc, "display", "keyboard", &self.display.keyboard);
+        set_str!(doc, "git", "remote_url", &self.git.remote_url);
+
+        std::fs::write(path, doc.to_string())?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(path)?.permissions();
+            perms.set_mode(0o600);
+            std::fs::set_permissions(path, perms)?;
+        }
+
+        Ok(())
     }
 
     fn save_to(&self, path: &Path) -> Result<()> {
@@ -1156,6 +1227,69 @@ proxy = "socks5h://127.0.0.1:9050"
         std::env::set_var("XDG_CONFIG_DIRS", sys_root.path());
 
         assert_eq!(Config::config_path().unwrap(), sys_config);
+    }
+
+    /// save() on an existing file must preserve user comments and untracked
+    /// values, and must update tracked fields to their new in-memory values.
+    #[test]
+    fn test_save_preserves_comments_and_user_edits() {
+        let _env = EnvGuard::take();
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.toml");
+
+        // Write a minimal config with a user comment and a tuned timeout.
+        std::fs::write(
+            &path,
+            "[clipboard]\n# my note\ntimeout_seconds = 30\n\n[git]\nremote_url = \"\"\n",
+        )
+        .unwrap();
+
+        std::env::set_var("MUJO_CONFIG", &path);
+
+        let mut cfg = Config::default();
+        cfg.clipboard.timeout_seconds = 30;
+        cfg.git.remote_url = "git@github.com:user/repo.git".to_string();
+        cfg.save().unwrap();
+
+        let result = std::fs::read_to_string(&path).unwrap();
+
+        // The user comment must survive.
+        assert!(
+            result.contains("# my note"),
+            "user comment was lost: {result}"
+        );
+        // The tuned timeout must survive.
+        assert!(
+            result.contains("timeout_seconds = 30"),
+            "timeout_seconds changed: {result}"
+        );
+        // The new remote_url must be written.
+        assert!(
+            result.contains("remote_url = \"git@github.com:user/repo.git\""),
+            "remote_url not updated: {result}"
+        );
+    }
+
+    /// save() on a missing file must write the full template (not an empty
+    /// document).
+    #[test]
+    fn test_save_writes_template_when_file_missing() {
+        let _env = EnvGuard::take();
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.toml");
+        std::env::set_var("MUJO_CONFIG", &path);
+
+        assert!(!path.exists());
+        Config::default().save().unwrap();
+        let result = std::fs::read_to_string(&path).unwrap();
+
+        // The full template has section headings.
+        assert!(
+            result.contains("[clipboard]"),
+            "template missing [clipboard]"
+        );
+        assert!(result.contains("[git]"), "template missing [git]");
+        assert!(result.contains("[display]"), "template missing [display]");
     }
 
     #[test]

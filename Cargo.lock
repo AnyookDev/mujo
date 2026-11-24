@@ -328,6 +328,7 @@ dependencies = [
  "sha1",
  "tempfile",
  "toml",
+ "toml_edit",
  "walkdir",
 ]
 
