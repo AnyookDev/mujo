@@ -27,18 +27,36 @@ fn test_git_workflow() {
     PassCommand::git(&["config", "user.name", "mujo test"]).expect("git config name");
     PassCommand::git(&["config", "user.email", "mujo@example.com"]).expect("git config email");
 
-    // Stage and commit using mujo's own arg builders.
+    // Stage and commit using mujo's own arg builders. Whether this creates a
+    // commit depends on the environment: pass's `git init` above commits the
+    // store contents itself when git has an identity available (e.g. from the
+    // host's global config), but on a host where git refuses to auto-detect
+    // one, pass's commit fails and the contents are left staged for this one.
+    // Either way the store must end up with work/github.gpg in history, so the
+    // assertions below are about content, not about commit subjects.
     PassCommand::git(&["add", "-A"]).expect("git add should succeed");
     let commit_args = git::commit_args("Initial commit: add existing passwords");
     let refs: Vec<&str> = commit_args.iter().map(String::as_str).collect();
     PassCommand::git(&refs).expect("git commit should succeed");
 
-    // The commit exists in history.
-    let log = PassCommand::git(&["log", "--oneline"]).expect("git log should succeed");
+    // The entry is in history. `log -- <path>` is empty only when the path was
+    // never committed, whatever the subject of the commit that added it.
+    let entry_log = PassCommand::git(&["log", "--oneline", "--", "work/github.gpg"])
+        .expect("git log for the entry should succeed");
     assert!(
-        log.contains("Initial commit"),
-        "history should contain the initial commit, got: {}",
-        log
+        !entry_log.trim().is_empty(),
+        "work/github.gpg should be in history, got empty log"
+    );
+
+    // The blob in the repo is the encrypted entry, not the plaintext: the
+    // stored file must never contain the password in the clear. The tree is
+    // clean after the commit, so the working file is the committed blob.
+    let entry_path = store.store.join("work/github.gpg");
+    let raw = std::fs::read(&entry_path).expect("entry file should be readable");
+    assert!(!raw.is_empty());
+    assert!(
+        !raw.windows(7).any(|w| w == b"hunter2"),
+        "stored entry must be GPG-encrypted, not plaintext"
     );
 
     // mujo's status parser reads real git output: clean tree on a branch.
@@ -69,18 +87,18 @@ fn test_git_workflow() {
     let refs: Vec<&str> = push_args.iter().map(String::as_str).collect();
     PassCommand::git(&refs).expect("git push should succeed");
 
-    // The remote actually received the commit.
+    // The remote actually received the entry. Check the path in the pushed
+    // history rather than a commit subject, for the same reason as above.
     let out = Command::new("git")
         .arg("-C")
         .arg(&remote_path)
-        .args(["log", "--oneline"])
+        .args(["log", "--oneline", "--", "work/github.gpg"])
         .output()
         .expect("remote log should run");
     assert!(out.status.success(), "remote should have a valid history");
     let remote_log = String::from_utf8_lossy(&out.stdout);
     assert!(
-        remote_log.contains("Initial commit"),
-        "remote should contain the pushed commit, got: {}",
-        remote_log
+        !remote_log.trim().is_empty(),
+        "remote should contain the pushed entry in history, got empty log"
     );
 }

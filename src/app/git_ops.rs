@@ -467,11 +467,33 @@ impl App {
     /// Run the commit and VERIFY it landed. Returns the actual git error
     /// on failure so the UI never reports success for a commit that did
     /// not happen.
+    ///
+    /// The verification compares HEAD before and after, not merely whether
+    /// it resolves: `git commit` can exit 0 without creating a commit - a
+    /// staged tree that matches HEAD is a no-op ("nothing to commit") - and
+    /// on a repo that already has commits `rev-parse --verify HEAD` still
+    /// succeeds, so the old check could not tell a landed commit from a
+    /// HEAD that never moved. Direct git exits 1 for the no-op, but the
+    /// `pass git` wrapper swallows that to 0, so the guard keeps the no-op
+    /// from ever reading as success on either path.
     pub(super) fn commit_staged(&mut self, message: &str) -> Result<()> {
+        let before = self.head_rev();
         self.git_cmd_owned(&git::commit_args(message))?;
-        // If HEAD still does not resolve, the commit did not land - do not
-        // report success.
-        self.git_cmd(&["rev-parse", "--verify", "HEAD"])?;
+        let after = self.head_rev();
+        Self::verify_commit_moved(before.as_deref(), after.as_deref())
+    }
+
+    /// Classify a commit from HEAD's before/after ids. Ok when HEAD moved,
+    /// including unborn (None) -> a real id, which is the first commit and
+    /// the one legitimate move from nothing. Err when HEAD is unchanged -
+    /// same id, or still unborn - since then git reported success without
+    /// creating a commit.
+    fn verify_commit_moved(before: Option<&str>, after: Option<&str>) -> Result<()> {
+        if before == after {
+            return Err(anyhow::anyhow!(
+                "git reported success but HEAD did not move - nothing was staged to commit"
+            ));
+        }
         Ok(())
     }
 
@@ -1145,6 +1167,85 @@ mod tests {
         // No merge ran: the confirmation prompt was never raised.
         assert!(!app.pending_pull);
         assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    /// The pure classification behind commit_staged: HEAD that moved is
+    /// success (including unborn -> real id, the first commit), HEAD that
+    /// stayed put is the no-op git's exit 0 can hide.
+    #[test]
+    fn verify_commit_moved_classifies_head_transitions() {
+        // Unborn HEAD becomes a real commit: the first commit is a success.
+        App::verify_commit_moved(None, Some("abc123")).expect("unborn -> real must succeed");
+        // HEAD moved to a new commit.
+        App::verify_commit_moved(Some("abc123"), Some("def456")).expect("moved HEAD must succeed");
+        // HEAD resolved before and after to the same id: nothing happened.
+        let err = App::verify_commit_moved(Some("abc123"), Some("abc123"))
+            .expect_err("unchanged HEAD must be rejected");
+        assert!(
+            err.to_string().contains("HEAD did not move"),
+            "error must name the no-move cause: {}",
+            err
+        );
+        // An unborn HEAD that is still unborn never produced a commit, so
+        // it is not success either.
+        assert!(
+            App::verify_commit_moved(None, None).is_err(),
+            "unborn HEAD that stayed unborn must be rejected"
+        );
+    }
+
+    /// commit_staged against a real repo: a genuine commit (first and
+    /// second) succeeds, and a commit with nothing staged is not reported
+    /// as success. This exercises the real git path - whose own exit code
+    /// for the no-op is 1, unlike the `pass git` wrapper's 0 - so the
+    /// guard is what keeps the no-op from ever reading as success.
+    #[test]
+    fn commit_staged_rejects_noop_and_accepts_real_commit() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let home = dir.path().to_str().unwrap().to_string();
+        let _env = EnvGuard::set(&[
+            ("PASSWORD_STORE_DIR", Some(home.as_str())),
+            ("HOME", Some(home.as_str())),
+            ("XDG_CONFIG_HOME", None),
+        ]);
+        let mut app = App::new().expect("app");
+
+        std::fs::create_dir_all(&app.store_path).expect("store dir");
+        let store_dir = app.store_path.clone();
+        let run = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(args)
+                .current_dir(&store_dir)
+                .output()
+                .expect("git");
+            assert!(
+                out.status.success(),
+                "git {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+        run(&["init"]);
+        run(&["config", "user.name", "Test"]);
+        run(&["config", "user.email", "test@example.com"]);
+
+        // A real commit from an unborn HEAD: None -> Some must be success.
+        std::fs::write(store_dir.join("a.txt"), "one\n").expect("write a.txt");
+        run(&["add", "-A"]);
+        app.commit_staged("first")
+            .expect("first commit from unborn HEAD should succeed");
+
+        // Same tree, nothing staged: this must not report success.
+        assert!(
+            app.commit_staged("noop").is_err(),
+            "no-op commit must not report success"
+        );
+
+        // A real second commit still succeeds.
+        std::fs::write(store_dir.join("b.txt"), "two\n").expect("write b.txt");
+        run(&["add", "-A"]);
+        app.commit_staged("second")
+            .expect("second commit should succeed");
     }
 
     #[test]
