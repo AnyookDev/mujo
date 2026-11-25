@@ -117,6 +117,16 @@ pub(crate) fn confirm_delete_units(
     ]
 }
 
+/// Whether the context slot may show a pending message in this mode.
+/// Messages only surface where they are produced, so a stale toast can
+/// never hide a prompt. A Ready git pane does take them - blocked and
+/// successful syncs report there - but the git setup prompts keep the
+/// slot for their own hints.
+fn message_slot_available(mode: &AppMode, git_pane: &GitPaneState) -> bool {
+    matches!(mode, AppMode::Normal | AppMode::Editor | AppMode::NewStore)
+        || (matches!(mode, AppMode::Git) && matches!(git_pane, GitPaneState::Ready))
+}
+
 pub(crate) fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     let (primary, secondary, text, bg) = get_colors(app);
 
@@ -260,12 +270,9 @@ pub(crate) fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     // carries the
     // state-derived label ("Setup", "New", "Edit", "Preview") in the
     // foreground color. Messages are only surfaced in the modes that
-    // produce them (Normal, Editor, NewStore) so a stale toast can never
-    // hide a prompt like "Delete x?" in ConfirmDelete.
-    let message_modes = matches!(
-        app.mode,
-        AppMode::Normal | AppMode::Editor | AppMode::NewStore
-    );
+    // produce them - see message_slot_available - so a stale toast can
+    // never hide a prompt like "Delete x?" in ConfirmDelete.
+    let message_modes = message_slot_available(&app.mode, &app.git_pane);
     let message_text = app
         .message
         .as_ref()
@@ -506,6 +513,27 @@ mod tests {
         assert_eq!(rect.y, 0);
         assert!(rect.x + rect.width <= 80);
         assert!(rect.y + rect.height <= 24);
+    }
+
+    #[test]
+    fn messages_surface_in_ready_git_pane_but_not_setup_prompts() {
+        assert!(message_slot_available(&AppMode::Git, &GitPaneState::Ready));
+        assert!(!message_slot_available(
+            &AppMode::Git,
+            &GitPaneState::AskRemote
+        ));
+        assert!(!message_slot_available(
+            &AppMode::Git,
+            &GitPaneState::AskIdentityName
+        ));
+        assert!(!message_slot_available(
+            &AppMode::Git,
+            &GitPaneState::Uninitialized
+        ));
+        assert!(message_slot_available(
+            &AppMode::Normal,
+            &GitPaneState::Ready
+        ));
     }
 
     #[test]
