@@ -74,7 +74,7 @@ pub fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
         // Quit stays on plain 'q' only: 'Q' now falls through to the
         // Shift+Letter jump arm below.
         KeyCode::Char('q') => app.should_quit = true,
-        // Tree jumps: Ctrl+Up/Down everywhere, plus Ctrl+U/D (advertised on
+        // Tree jumps: Ctrl+Up/Down everywhere, plus Ctrl+u/d (advertised on
         // Mac, where Mission Control captures Ctrl+arrow). accepts ignores
         // the platform, so both chords work everywhere. Wrong modifiers
         // (plain, Shift) do not match, so the plain navigation and

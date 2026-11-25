@@ -505,8 +505,8 @@ truecolor = "{truecolor}"
 
 # Keyboard chord advertising: auto, mac, linux.
 # auto follows the platform mujo runs on. This only changes which chords
-# are ADVERTISED in the help body and status bar (a Mac advertises Ctrl+U,
-# Ctrl+A/E, b/Space and g/G instead of Ctrl+arrows, Home/End and PgUp/PgDn);
+# are ADVERTISED in the help body and status bar (a Mac advertises Ctrl+u,
+# Ctrl+a/e, b/Space and g/G instead of Ctrl+arrows, Home/End and PgUp/PgDn);
 # every chord works on every platform either way.
 keyboard = "{keyboard}"
 

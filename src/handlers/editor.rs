@@ -68,7 +68,7 @@ pub fn handle_editor_mode(app: &mut App, key: KeyEvent) -> Result<()> {
             // password length; these arms must come before the plain
             // Up/Down arms, which carry no modifier guard.
             // Generated password length: Ctrl+Up/Down everywhere, plus
-            // Ctrl+U/D (advertised on Mac). Same action enum as the tree
+            // Ctrl+u/d (advertised on Mac). Same action enum as the tree
             // jump, different effect per pane. Active only while the
             // Password field is focused, like before.
             KeyCode::Up | KeyCode::Char('u')
@@ -165,7 +165,7 @@ pub fn handle_editor_mode(app: &mut App, key: KeyEvent) -> Result<()> {
                     }
                 }
             }
-            // Line start/end: Home/End everywhere, plus Ctrl+A/E (advertised
+            // Line start/end: Home/End everywhere, plus Ctrl+a/e (advertised
             // on Mac). Works on every field line, like Home/End before it.
             KeyCode::Home | KeyCode::Char('a')
                 if accepts(Action::LineStart, key.code, key.modifiers) =>
@@ -229,7 +229,7 @@ pub fn handle_editor_mode(app: &mut App, key: KeyEvent) -> Result<()> {
                         Some(("Clipboard empty or unavailable".to_string(), Instant::now()));
                 }
             }
-            // The Ctrl+U/D chords are matched by the guarded length arms
+            // The Ctrl+u/d chords are matched by the guarded length arms
             // above only inside the Password field; swallow them elsewhere
             // so the text catch-all below never inserts their letter.
             KeyCode::Char('u') | KeyCode::Char('d')

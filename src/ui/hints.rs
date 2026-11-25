@@ -212,7 +212,7 @@ pub(crate) fn select_hints(
 
 /// Compact paired label for two advertised chords that share a "Ctrl+"
 /// prefix: "Ctrl+\u{2191}"/"Ctrl+\u{2193}" becomes "Ctrl+\u{2191}/\u{2193}"
-/// and "Ctrl+U"/"Ctrl+D" becomes "Ctrl+U/D". Pairs without the shared
+/// and "Ctrl+u"/"Ctrl+d" becomes "Ctrl+u/d". Pairs without the shared
 /// prefix ("PgUp"/"PgDn", "b"/"Space") are joined with a slash as-is.
 pub(crate) fn chord_pair(up: &str, down: &str) -> String {
     match (up.strip_prefix("Ctrl+"), down.strip_prefix("Ctrl+")) {
@@ -370,7 +370,7 @@ pub(crate) fn normal_mode_hints(
         ));
         hints.push(hint_unit(HintTier::Important, "g", key_style, ":git ", dim));
         // Secondary. The jump chord label is platform-aware: a Mac user
-        // sees "Ctrl+U/D" where a Linux user sees "Ctrl+↑/↓".
+        // sees "Ctrl+u/d" where a Linux user sees "Ctrl+↑/↓".
         let jump_label = chord_pair(
             keys::advertised(Action::JumpUp).unwrap_or("Ctrl+\u{2191}"),
             keys::advertised(Action::JumpDown).unwrap_or("Ctrl+\u{2193}"),

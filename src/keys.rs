@@ -74,7 +74,7 @@ static BINDINGS: &[Binding] = &[
         action: Action::JumpUp,
         code: KeyCode::Char('u'),
         mods: KeyModifiers::CONTROL,
-        label: "Ctrl+U",
+        label: "Ctrl+u",
         platforms: MAC_LINUX,
     },
     Binding {
@@ -88,7 +88,7 @@ static BINDINGS: &[Binding] = &[
         action: Action::JumpDown,
         code: KeyCode::Char('d'),
         mods: KeyModifiers::CONTROL,
-        label: "Ctrl+D",
+        label: "Ctrl+d",
         platforms: MAC_LINUX,
     },
     Binding {
@@ -102,7 +102,7 @@ static BINDINGS: &[Binding] = &[
         action: Action::LineStart,
         code: KeyCode::Char('a'),
         mods: KeyModifiers::CONTROL,
-        label: "Ctrl+A",
+        label: "Ctrl+a",
         platforms: MAC_LINUX,
     },
     Binding {
@@ -116,7 +116,7 @@ static BINDINGS: &[Binding] = &[
         action: Action::LineEnd,
         code: KeyCode::Char('e'),
         mods: KeyModifiers::CONTROL,
-        label: "Ctrl+E",
+        label: "Ctrl+e",
         platforms: MAC_LINUX,
     },
     Binding {
@@ -386,7 +386,7 @@ mod tests {
     #[test]
     fn test_accepts_is_platform_independent() {
         // Every chord matches everywhere, regardless of the active
-        // platform: Ctrl+Up (advertised on Linux only) and Ctrl+U
+        // platform: Ctrl+Up (advertised on Linux only) and Ctrl+u
         // (advertised on Mac too) both jump, on any platform.
         assert!(accepts(Action::JumpUp, KeyCode::Up, KeyModifiers::CONTROL));
         assert!(accepts(
@@ -470,22 +470,22 @@ mod tests {
 
     #[test]
     fn test_advertised_is_platform_filtered() {
-        // Ctrl+Up is advertised on Linux only; Mac users are told Ctrl+U.
+        // Ctrl+Up is advertised on Linux only; Mac users are told Ctrl+u.
         assert_eq!(
             advertised_for(Action::JumpUp, Platform::Linux),
             Some("Ctrl+\u{2191}")
         );
         assert_eq!(
             advertised_for(Action::JumpUp, Platform::Mac),
-            Some("Ctrl+U")
+            Some("Ctrl+u")
         );
         assert_eq!(
             advertised_for(Action::JumpDown, Platform::Mac),
-            Some("Ctrl+D")
+            Some("Ctrl+d")
         );
         assert_eq!(
             advertised_for(Action::LineStart, Platform::Mac),
-            Some("Ctrl+A")
+            Some("Ctrl+a")
         );
         assert_eq!(
             advertised_for(Action::LineEnd, Platform::Linux),

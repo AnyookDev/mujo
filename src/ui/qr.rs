@@ -222,7 +222,7 @@ pub(crate) fn draw_preview(f: &mut Frame, app: &mut App, area: Rect) {
     // the preview shows the PENDING content being edited - parsed from the
     // editor's current state - instead of the on-disk original, so the user
     // sees exactly what they are about to save or discard. Without
-    // ConfirmSave here, the first Ctrl+S press (which triggers the
+    // ConfirmSave here, the first Ctrl+s press (which triggers the
     // confirmation) would flip the preview back to the stale on-disk content
     // while the prompt is showing, which looked like the edit had been lost.
     // The password stays masked by the usual show_password logic.

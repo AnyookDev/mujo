@@ -41,7 +41,7 @@ pub(crate) fn help_entries() -> Vec<String> {
 pub(crate) fn help_entries_for(platform: keys::Platform) -> Vec<String> {
     let mut lines = Vec::new();
 
-    // Chord labels are platform-aware: a Mac user sees Ctrl+U/D, Ctrl+A/E,
+    // Chord labels are platform-aware: a Mac user sees Ctrl+u/d, Ctrl+a/e,
     // b/Space and g/G where a Linux user sees Ctrl+arrows, Home/End and
     // PgUp/PgDn. Every chord works on every platform either way; only the
     // advertising differs.
