@@ -29,10 +29,11 @@ impl App {
     /// cause. Leaving raw mode IS needed: with it off, the tty is in
     /// canonical mode and line-buffered, so the child can read a typed
     /// passphrase (and the user still sees it echoed, as git expects).
-    /// needs_clear is still set: the child wrote its own output onto the
-    /// alternate screen, so ratatui's buffer no longer matches the
-    /// terminal and the next frame must repaint in full rather than diff.
-    /// The handover only runs when a TUI actually owns the screen
+    /// Nothing of the child's own output is echoed here - mujo stays on the
+    /// alternate screen, so writing it would print over the TUI - but a
+    /// /dev/tty prompt still lands on that screen, so needs_clear makes the
+    /// next frame repaint in full rather than diff and leaves no prompt
+    /// behind. The handover only runs when a TUI actually owns the screen
     /// (tui_active): under `cargo test` no TUI is running, and the
     /// terminal-mode calls would garble libtest's output. The unit-test
     /// build still records the decision (needs_clear) so the gating stays
@@ -40,20 +41,12 @@ impl App {
     pub(crate) fn with_terminal_handover<T>(
         &mut self,
         interactive: bool,
-        context: Option<String>,
         f: impl FnOnce() -> Result<T>,
     ) -> Result<T> {
         let on_tty = interactive && self.tui_active && !cfg!(test);
         if on_tty {
             let _ = disable_raw_mode();
             let _ = stdout().flush();
-            // One context line so the silent case (e.g. a passwordless
-            // YubiKey key that only needs a touch) still shows that mujo
-            // handed the terminal to the child and is not frozen. Written
-            // to stderr, where the child's teed output follows.
-            if let Some(line) = context {
-                eprintln!("{}", line);
-            }
         }
         let result = f();
         if interactive && self.tui_active {
@@ -101,22 +94,16 @@ impl App {
     /// alternate screen (see with_terminal_handover).
     pub(super) fn git_cmd(&mut self, args: &[&str]) -> Result<String> {
         let interactive = Self::prompts_on_tty(args) && self.tui_active;
-        let on_tty = interactive && !cfg!(test);
-        let context = if on_tty {
-            Some(format!("mujo: git {}", args.first().copied().unwrap_or("")))
-        } else {
-            None
-        };
-        // Interactive runs tee the child's stderr to the (now visible)
-        // terminal while still capturing it, so prompts like OpenSSH's
-        // "Confirm user presence for key ..." are seen live AND end up in
-        // git_output. Non-interactive runs keep the plain captured path.
+        // The child's output is captured, never echoed: mujo stays on the
+        // alternate screen, so writing git's output to our own stderr would
+        // print it straight over the TUI (and a trailing newline at the
+        // screen bottom would scroll the whole interface up). The child's
+        // /dev/tty prompt is still visible - the terminal writes that
+        // itself - and the captured output reaches the git pane.
         let store = self.store_path.clone();
-        self.with_terminal_handover(interactive, context, || {
+        self.with_terminal_handover(interactive, || {
             if args.first() == Some(&"init") {
                 PassCommand::git(args)
-            } else if on_tty {
-                PassCommand::git_in_tee(&store, args)
             } else {
                 PassCommand::git_in(&store, args)
             }
@@ -1455,7 +1442,7 @@ mod tests {
     #[test]
     fn handover_records_repaint_but_keeps_the_alternate_screen() {
         let mut app = temp_app(true);
-        let _ = app.with_terminal_handover(true, None, || Ok::<(), anyhow::Error>(()));
+        let _ = app.with_terminal_handover(true, || Ok::<(), anyhow::Error>(()));
         assert!(app.needs_clear);
     }
 
@@ -1464,14 +1451,14 @@ mod tests {
         // The background preview decrypt calls with interactive=false: it
         // must not force a repaint (and must not touch the terminal).
         let mut app = temp_app(true);
-        let _ = app.with_terminal_handover(false, None, || Ok::<(), anyhow::Error>(()));
+        let _ = app.with_terminal_handover(false, || Ok::<(), anyhow::Error>(()));
         assert!(!app.needs_clear);
     }
 
     #[test]
     fn handover_does_nothing_without_a_tui() {
         let mut app = temp_app(false);
-        let _ = app.with_terminal_handover(true, None, || Ok::<(), anyhow::Error>(()));
+        let _ = app.with_terminal_handover(true, || Ok::<(), anyhow::Error>(()));
         assert!(!app.needs_clear);
     }
 

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, Stdio};
 
 /// Resolve the password store directory. $PASSWORD_STORE_DIR is used
 /// verbatim when set and non-empty (no tilde expansion, matching how pass
@@ -335,20 +335,7 @@ impl PassCommand {
         Self::git_result(output.status, &output.stdout, &output.stderr)
     }
 
-    /// Interactive variant of git_in() for the tty handover: the child's
-    /// stderr is teed - each chunk is written verbatim (and flushed) to
-    /// this process's stderr as it arrives, so OpenSSH's "Confirm user
-    /// presence for key ..." touch prompt is visible while the alternate
-    /// screen is down - AND captured, so the returned string is
-    /// byte-identical to git_in()'s.
-    pub fn git_in_tee(store: &Path, args: &[&str]) -> Result<String> {
-        let mut cmd = Command::new("git");
-        cmd.arg("-C").arg(store).args(args);
-        let output = spawn_with_tee(cmd, "git")?;
-        Self::git_result(output.status, &output.stdout, &output.stderr)
-    }
-
-    /// Shared tail of git()/git_tee(): clean the raw streams and turn the
+    /// Shared tail of git()/git_in(): clean the raw streams and turn the
     /// exit status into Ok(combined) / Err(combined). One implementation
     /// for both paths keeps their output byte-identical.
     fn git_result(
@@ -391,70 +378,6 @@ impl PassCommand {
             }))
         }
     }
-}
-
-/// Run `cmd` with both stdout and stderr piped, teeing the child's stderr
-/// to this process's stderr (written and flushed per chunk, so prompts
-/// like OpenSSH's key-touch confirmation appear immediately) while also
-/// capturing it. Stdout is drained on the calling thread, stderr on a
-/// helper thread that is joined before returning - so a caller that
-/// restores the terminal right after this function can never race the
-/// last stderr chunk. The returned Output has the same shape as
-/// Command::output()'s.
-fn spawn_with_tee(mut cmd: Command, program: &str) -> Result<Output> {
-    use std::io::Read;
-
-    let mut child = cmd
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| spawn_err(program, &e))?;
-
-    // Tee stderr: every chunk read from the child goes verbatim to this
-    // process's stderr (flushed, so it is on screen at once) and into the
-    // capture buffer.
-    let stderr_thread = child.stderr.take().map(|stderr| {
-        std::thread::spawn(move || {
-            let mut reader = stderr;
-            let mut captured = Vec::new();
-            let mut chunk = [0u8; 8192];
-            loop {
-                match reader.read(&mut chunk) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        use std::io::Write;
-                        let mut err = std::io::stderr();
-                        let _ = err.write_all(&chunk[..n]);
-                        let _ = err.flush();
-                        captured.extend_from_slice(&chunk[..n]);
-                    }
-                    Err(_) => break,
-                }
-            }
-            captured
-        })
-    });
-
-    // Drain stdout on the calling thread so the child never blocks on a
-    // full stdout pipe while stderr is being teed.
-    let mut stdout_buf = Vec::new();
-    if let Some(mut stdout) = child.stdout.take() {
-        let _ = stdout.read_to_end(&mut stdout_buf);
-    }
-
-    let status = child.wait()?;
-    // Join the tee thread BEFORE returning: the caller restores the
-    // alternate screen immediately after, and a not-yet-joined thread
-    // could still be mid-write to the now-hidden terminal.
-    let stderr_buf = stderr_thread
-        .map(|h| h.join().unwrap_or_default())
-        .unwrap_or_default();
-
-    Ok(Output {
-        status,
-        stdout: stdout_buf,
-        stderr: stderr_buf,
-    })
 }
 
 /// Cheap plausibility check for a GPG key identifier, without invoking
@@ -586,26 +509,6 @@ mod tests {
         // Control characters are rejected - including a trailing newline,
         // which must not be silently trimmed away first.
         assert!(!is_plausible_gpg_id("user@example.com\n"));
-    }
-
-    /// The tee path must capture exactly what the plain Command::output()
-    /// path captures: run the same stream-writing command both ways and
-    /// compare status and both byte streams, including \r characters.
-    #[test]
-    fn test_spawn_with_tee_matches_plain_output() {
-        let script = "printf 'out\\nline2\\r\\n'; printf 'err\\nline2\\r' >&2; exit 3";
-        let build = || {
-            let mut c = Command::new("sh");
-            c.arg("-c").arg(script);
-            c
-        };
-
-        let plain = build().output().expect("plain run");
-        let teed = spawn_with_tee(build(), "sh").expect("tee run");
-
-        assert_eq!(plain.status.code(), teed.status.code());
-        assert_eq!(plain.stdout, teed.stdout, "stdout must be identical");
-        assert_eq!(plain.stderr, teed.stderr, "stderr must be identical");
     }
 
     /// git_in() must propagate git's real exit status: a failing command
