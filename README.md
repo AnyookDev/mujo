@@ -112,14 +112,19 @@ and `focus-events on`):
 | alacritty | yes | copy still pasteable | becomes a space |
 | cosmic-term | yes | copy still pasteable | becomes a space |
 | foot | yes | copy still pasteable | becomes a space |
+| iterm2 | yes, once enabled | copy cleared | becomes a space |
 | kitty | yes | copy cleared | becomes a space |
 | gnome-terminal (Linux host only) | no | clipboard unchanged | clipboard unchanged |
 | konsole | no | clipboard unchanged | clipboard unchanged |
+| Terminal.app | no | clipboard unchanged | clipboard unchanged |
 | xterm | no | clipboard unchanged | clipboard unchanged |
+
+iTerm2 ignores the escape until *Settings → General → Selection → Applications
+in terminal may access clipboard* is enabled, and fails silently until then.
 
 Where copy does not work, the terminal ignores OSC 52 clipboard writes. mujo has
 no way to detect this, so it still reports "sent to terminal clipboard". Use
-alacritty, cosmic-term, foot or kitty for SSH sessions that need copy.
+alacritty, cosmic-term, foot, iTerm2 or kitty for SSH sessions that need copy.
 
 If mujo is unfocused when the timer fires, it re-sends the overwrite when you
 return. To limit exposure, copy only when you are about to paste, and do not rely
