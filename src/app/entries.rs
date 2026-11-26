@@ -234,6 +234,32 @@ impl App {
         self.preview_selected_line = None;
     }
 
+    /// Drop the preview when its entry is no longer in the store. The
+    /// preview is tied to a specific entry, so once that entry is gone -
+    /// deleted, moved away, or removed outside mujo - keeping its decrypted
+    /// contents on screen (and the mode pill reading "Preview") is a lie.
+    /// Enforced after every entry reload rather than at each removal site,
+    /// so a path that removes entries without remembering the preview still
+    /// cannot leave it stale.
+    fn reconcile_preview_with_entries(&mut self) {
+        let Some(previewed) = self.current_entry_path.clone() else {
+            return;
+        };
+        let still_present = self.entries.iter().any(|e| {
+            !e.is_dir
+                && e.path
+                    .strip_prefix(&self.store_path)
+                    .unwrap_or(&e.path)
+                    .to_string_lossy()
+                    .strip_suffix(".gpg")
+                    .map(|rel| rel == previewed)
+                    .unwrap_or(false)
+        });
+        if !still_present {
+            self.clear_preview();
+        }
+    }
+
     fn normalize_gpg(path: &Path) -> String {
         let s = path.to_string_lossy();
         s.strip_suffix(".gpg").unwrap_or(&s).to_string()
@@ -311,6 +337,9 @@ impl App {
         }
 
         self.rebuild_filtered();
+        // The reload may have dropped the previewed entry (removed here or
+        // outside mujo); drop the preview rather than show a ghost.
+        self.reconcile_preview_with_entries();
         Ok(())
     }
 }
@@ -399,6 +428,67 @@ mod tests {
 
         app.refresh_git_info();
         assert_eq!(app.git_ahead, 1, "folder commit must count as ahead");
+    }
+
+    /// Deleting the previewed entry must drop the preview: otherwise the
+    /// pane keeps rendering decrypted contents for an entry that no longer
+    /// exists, and the mode pill keeps reading "Preview". Enforced by the
+    /// reload, so it also covers an entry removed outside mujo (the 5s
+    /// poll), and deleting the folder that contained the previewed entry.
+    #[test]
+    fn reload_drops_the_preview_of_a_removed_entry() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let home = dir.path().to_str().unwrap().to_string();
+        let _env = EnvGuard::set(&[
+            ("PASSWORD_STORE_DIR", Some(home.as_str())),
+            ("HOME", Some(home.as_str())),
+            ("XDG_CONFIG_HOME", None),
+        ]);
+        let mut app = App::new().expect("app");
+
+        let write_entry = |app: &App, rel: &str| {
+            let path = app.store_path.join(format!("{}.gpg", rel));
+            std::fs::create_dir_all(path.parent().unwrap()).expect("entry dir");
+            std::fs::write(path, "not a real gpg file").expect("write entry");
+        };
+
+        write_entry(&app, "work/github");
+        write_entry(&app, "personal/bank");
+        app.load_entries().expect("load entries");
+        app.rebuild_filtered();
+
+        // Previewing one entry, then removing a DIFFERENT one, keeps it.
+        app.current_content = Some(DecryptedContent::parse("secret\nuser: a"));
+        app.current_entry_path = Some("work/github".to_string());
+        std::fs::remove_file(app.store_path.join("personal/bank.gpg")).expect("remove other");
+        app.reload_entries().expect("reload");
+        assert!(
+            app.current_content.is_some(),
+            "removing an unrelated entry must not clear the preview"
+        );
+
+        // Removing the previewed entry itself drops the preview - here the
+        // removal happens outside mujo, exactly as the 5s poll sees it.
+        std::fs::remove_file(app.store_path.join("work/github.gpg")).expect("remove previewed");
+        app.reload_entries().expect("reload");
+        assert!(
+            app.current_content.is_none(),
+            "the previewed entry being gone must clear the preview"
+        );
+        assert!(app.current_entry_path.is_none());
+
+        // Deleting the folder that contained the previewed entry clears it.
+        write_entry(&app, "work/nested/github");
+        app.load_entries().expect("load entries");
+        app.rebuild_filtered();
+        app.current_content = Some(DecryptedContent::parse("secret\nuser: a"));
+        app.current_entry_path = Some("work/nested/github".to_string());
+        std::fs::remove_dir_all(app.store_path.join("work")).expect("remove folder");
+        app.reload_entries().expect("reload");
+        assert!(
+            app.current_content.is_none(),
+            "deleting the containing folder must clear the preview"
+        );
     }
 
     /// A user-initiated decrypt (Enter/reveal/edit load) hands the

@@ -6,7 +6,7 @@ use anyhow::Result;
 use crossterm::{
     execute,
     style::Print,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{disable_raw_mode, enable_raw_mode},
 };
 use std::io::{stdout, Write};
 use std::time::{Duration, Instant, SystemTime};
@@ -17,22 +17,26 @@ impl App {
         matches!(args.first(), Some(&"push") | Some(&"pull") | Some(&"fetch"))
     }
 
-    /// Hand the terminal over to a child that may prompt on /dev/tty (git
-    /// push/pull/fetch asking ssh for a password, or the pass commands
-    /// that invoke gpg and therefore pinentry-curses, which switches the
-    /// terminal to the normal screen on exit while mujo keeps drawing on
-    /// the alternate screen) and run `f`, restoring the TUI afterwards.
-    /// While handed over: raw mode off, alternate screen left, so the
-    /// child's prompt is readable on the normal screen; afterwards the
-    /// alternate screen is re-entered and needs_clear tells the event
-    /// loop to clear before the next draw, since EnterAlternateScreen
-    /// clears on entry and ratatui's diff would otherwise consider every
-    /// cell unchanged. The handover only runs when a TUI actually owns
-    /// the screen (tui_active): under `cargo test` no TUI is running, and
-    /// the escape sequences would go straight to fd 1, bypassing
-    /// libtest's capture and garbling the terminal. The unit-test build
-    /// still records the handover decision (needs_clear) so the gating
-    /// stays observable.
+    /// Run a child that may prompt on /dev/tty (git push/pull/fetch asking
+    /// ssh for a password) and run `f`, restoring the terminal afterwards.
+    ///
+    /// The child stays on the ALTERNATE screen: git and ssh write their
+    /// prompts straight to /dev/tty, which is readable whether the
+    /// alternate or the normal screen is active, so the old switch to the
+    /// normal screen (and back) was never needed to see the prompt - and
+    /// leaving the alternate screen revealed the bare terminal for an
+    /// instant before mujo repainted, which is the flash this used to
+    /// cause. Leaving raw mode IS needed: with it off, the tty is in
+    /// canonical mode and line-buffered, so the child can read a typed
+    /// passphrase (and the user still sees it echoed, as git expects).
+    /// needs_clear is still set: the child wrote its own output onto the
+    /// alternate screen, so ratatui's buffer no longer matches the
+    /// terminal and the next frame must repaint in full rather than diff.
+    /// The handover only runs when a TUI actually owns the screen
+    /// (tui_active): under `cargo test` no TUI is running, and the
+    /// terminal-mode calls would garble libtest's output. The unit-test
+    /// build still records the decision (needs_clear) so the gating stays
+    /// observable.
     pub(crate) fn with_terminal_handover<T>(
         &mut self,
         interactive: bool,
@@ -42,7 +46,6 @@ impl App {
         let on_tty = interactive && self.tui_active && !cfg!(test);
         if on_tty {
             let _ = disable_raw_mode();
-            let _ = execute!(stdout(), LeaveAlternateScreen);
             let _ = stdout().flush();
             // One context line so the silent case (e.g. a passwordless
             // YubiKey key that only needs a touch) still shows that mujo
@@ -55,7 +58,6 @@ impl App {
         let result = f();
         if interactive && self.tui_active {
             if on_tty {
-                let _ = execute!(stdout(), EnterAlternateScreen);
                 let _ = enable_raw_mode();
                 let _ = stdout().flush();
             }
@@ -94,16 +96,12 @@ impl App {
     /// made every failure invisible. EXCEPTION: `init` still goes through
     /// `pass git init`, whose cmd_git adds .gitattributes and makes the
     /// initial commit, with a reliable status (`git "$@" || exit 1`).
-    /// For push/pull/fetch the terminal is handed over first so an ssh
-    /// prompt is readable (see with_terminal_handover).
+    /// For push/pull/fetch the terminal is handed over first so a /dev/tty
+    /// prompt from git or ssh is readable without the flash of leaving the
+    /// alternate screen (see with_terminal_handover).
     pub(super) fn git_cmd(&mut self, args: &[&str]) -> Result<String> {
         let interactive = Self::prompts_on_tty(args) && self.tui_active;
         let on_tty = interactive && !cfg!(test);
-        // One context line so the silent case (e.g. a passwordless
-        // YubiKey key that only needs a touch) still shows that mujo
-        // handed the terminal to git and is not frozen. The handover
-        // helper emits it after leaving the alternate screen, so it lands
-        // on the visible terminal where the child's teed output follows.
         let context = if on_tty {
             Some(format!("mujo: git {}", args.first().copied().unwrap_or("")))
         } else {
@@ -1437,7 +1435,11 @@ mod tests {
     }
 
     #[test]
-    fn git_cmd_with_tui_sets_needs_clear_for_interactive() {
+    fn git_cmd_with_tui_forces_repaint_for_interactive() {
+        // The child writes onto the alternate screen, so ratatui's buffer
+        // is stale afterwards and the next frame must repaint in full.
+        // needs_clear does that - and does NOT mean the screen changed:
+        // the alternate screen is never left (that was the flash).
         let mut app = temp_app(true);
         let _ = app.git_cmd(&["push"]);
         assert!(app.needs_clear);
@@ -1451,25 +1453,23 @@ mod tests {
     }
 
     #[test]
-    fn handover_flag_set_for_gpg_prompting_pass_commands() {
-        // insert/generate/rm/init and a user-initiated show all funnel
-        // through with_terminal_handover with interactive=true: the flag
-        // must be recorded even under cfg!(test), where the raw terminal
-        // I/O is skipped.
+    fn handover_records_repaint_but_keeps_the_alternate_screen() {
         let mut app = temp_app(true);
         let _ = app.with_terminal_handover(true, None, || Ok::<(), anyhow::Error>(()));
         assert!(app.needs_clear);
     }
 
     #[test]
-    fn handover_flag_not_set_for_preview_show() {
+    fn non_interactive_handover_leaves_needs_clear_false() {
+        // The background preview decrypt calls with interactive=false: it
+        // must not force a repaint (and must not touch the terminal).
         let mut app = temp_app(true);
         let _ = app.with_terminal_handover(false, None, || Ok::<(), anyhow::Error>(()));
         assert!(!app.needs_clear);
     }
 
     #[test]
-    fn handover_requires_tui_active() {
+    fn handover_does_nothing_without_a_tui() {
         let mut app = temp_app(false);
         let _ = app.with_terminal_handover(true, None, || Ok::<(), anyhow::Error>(()));
         assert!(!app.needs_clear);
