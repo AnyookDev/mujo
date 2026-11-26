@@ -3,8 +3,8 @@
 ![mujo](assets/screenshot.png)
 
 A terminal UI for `pass`. Password tree navigation, entry preview, decrypted
-editing, quick copy-paste of passwords/usernames, password QR code generation,
-and git for backup and versioning of your password store.
+editing, quick copy-paste of passwords, usernames and TOTP codes, password QR
+code generation, and git for backup and versioning of your password store.
 
 ## Quick start
 
@@ -103,35 +103,23 @@ Reload with `tmux source-file ~/.tmux.conf` and then detach and reattach for
 
 **Clipboard auto-clear over SSH is best effort, and depends on your terminal.**
 When the timeout fires, mujo sends an OSC 52 overwrite (a single space) to your
-terminal. mujo cannot confirm that the terminal applied it. In testing over plain
-SSH, the terminals behaved differently. With a Linux mujo host, the results were
-the same with and without tmux (`set-clipboard on` and `focus-events on`):
+terminal. mujo cannot confirm that the terminal applied it. Results were the same
+with a Linux and a macOS mujo host, and with and without tmux (`set-clipboard on`
+and `focus-events on`):
 
 | Terminal | Copy works | Unfocused, past timeout | After refocusing mujo |
 | --- | --- | --- | --- |
 | alacritty | yes | copy still pasteable | becomes a space |
 | cosmic-term | yes | copy still pasteable | becomes a space |
-| kitty | yes | copy cleared | becomes a space |
-| gnome-terminal | no | clipboard unchanged | clipboard unchanged |
-| konsole | no | clipboard unchanged | clipboard unchanged |
-| xterm | no | clipboard unchanged | clipboard unchanged |
 | foot | yes | copy still pasteable | becomes a space |
-
-With a macOS mujo host (a VM, reached over SSH), the results were also the same
-with and without tmux:
-
-| Terminal | Copy works | Unfocused, past timeout | After refocusing mujo |
-| --- | --- | --- | --- |
-| alacritty | yes | copy still pasteable | becomes a space |
-| cosmic-term | yes | copy still pasteable | becomes a space |
 | kitty | yes | copy cleared | becomes a space |
-| foot | yes | copy still pasteable | becomes a space |
+| gnome-terminal (Linux host only) | no | clipboard unchanged | clipboard unchanged |
 | konsole | no | clipboard unchanged | clipboard unchanged |
 | xterm | no | clipboard unchanged | clipboard unchanged |
 
 Where copy does not work, the terminal ignores OSC 52 clipboard writes. mujo has
 no way to detect this, so it still reports "sent to terminal clipboard". Use
-alacritty, cosmic-term or kitty for SSH sessions that need copy.
+alacritty, cosmic-term, foot or kitty for SSH sessions that need copy.
 
 If mujo is unfocused when the timer fires, it re-sends the overwrite when you
 return. To limit exposure, copy only when you are about to paste, and do not rely
@@ -268,6 +256,22 @@ the git remote from config on refresh, so an external `git remote set-url` is
 reverted on the next refresh. To change the push target, edit config.toml or use
 the git pane's setup.
 
+## Entry formatting
+
+The first line of an entry is the password. Optional keys below it drive extra
+shortcuts, matched case-insensitively:
+
+- `username:`, `user:` or `login:` — the value is copied by `u`
+- `totp:` — a base32 secret whose current code is copied by `t`
+
+    hunter2
+    username: octocat
+    totp: JBSWY3DPEHPK3PXP
+    url: https://github.com
+
+`c` copies the password itself. All three honour the clipboard timeout. An
+entry without the matching key reports that, and copies nothing.
+
 ## macOS notes
 
 **Terminal.app** binds ⇧↑/⇧↓ to view scrolling and sends no escape sequence for
@@ -291,7 +295,7 @@ bold smears vertically. Not an issue in iTerm2, kitty or cosmic-terminal.
 short window uses a denser render that still scans but looks coarser —
 noticeably speckled on Terminal.app.
 
-**Keyboard layout.** A Mac keyboard advertises `Ctrl+U/D` where a PC keyboard
+**Keyboard layout.** A Mac keyboard advertises `Ctrl+u/d` where a PC keyboard
 advertises `Ctrl+↑/↓`, because macOS captures Ctrl+arrows. The layout is
 detected from the target, but over SSH the detection sees the remote, so
 uncomment the `keyboard` line in `config.toml` and set it to `mac` if you are
@@ -316,6 +320,7 @@ Press `?` or `Ctrl+/` in the app for the full list, grouped by mode.
 | `mujo` not found after `install` | `~/.local/bin` not on `PATH` | add it to your shell rc |
 | `c`, `t` or `u` says copied over SSH, but nothing pastes | inside tmux, `set-clipboard` is `external` (the default), so tmux drops the copy; or the terminal doesn't accept OSC 52 | in `~/.tmux.conf`, `set -g set-clipboard on` and `set -g focus-events on`, then reload tmux and detach/reattach |
 | icons show as empty boxes | `glyphs` is set to `nerd` but the terminal isn't using a Nerd Font — or you are over SSH and the remote has none | see [Fonts](#fonts); check `mujo --diagnose` |
+| creating `Otp` says it already exists when `otp` does | macOS and other case-insensitive filesystems treat the two names as one file | rename the existing entry, or pick a name differing by more than case |
 
 ## License
 
